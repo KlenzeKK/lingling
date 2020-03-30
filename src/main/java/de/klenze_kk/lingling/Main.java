@@ -1,14 +1,19 @@
 package de.klenze_kk.jingling;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 
 import de.klenze_kk.jingling.Gui.*;
 
 public class Main {
-	static JFrame WINDOW;
-	static JPanel PANEL;
-
+	private static final Logger LOGGER = Logger.getLogger("[Lingling-System]");
+	private static JFrame WINDOW;
+	private static JPanel PANEL;
+	private static JPanel currentDisplay;
+	
 	public static void main(String[] args) {
 		initWin();
 
@@ -31,5 +36,17 @@ public class Main {
 		PANEL = p;
 		WINDOW.add(PANEL);
 	}
+	
+	 public static void log(Level logLevel, String message) {
+	        synchronized (LOGGER) {
+	            LOGGER.log(logLevel, message);
+	        }
+	    }
+	 
+	   public static void log(Level logLevel, String message, Throwable error) {
+	        synchronized (LOGGER) {
+	            LOGGER.log(logLevel, message, error);
+	        }
+	    }
 
 }
