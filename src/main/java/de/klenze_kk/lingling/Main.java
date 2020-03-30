@@ -11,7 +11,7 @@ import de.klenze_kk.jingling.Gui.*;
 public class Main {
 	private static final Logger LOGGER = Logger.getLogger("[Lingling-System]");
 	private static JFrame WINDOW;
-	private static JPanel PANEL;
+	private static JPanel panel;
 	private static JPanel currentDisplay;
 	
 	public static void main(String[] args) {
@@ -25,16 +25,16 @@ public class Main {
 		WINDOW.setResizable(false);
 		WINDOW.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		WINDOW.setLocationRelativeTo(null);
-		PANEL = new LogScreen();
+		panel = new LogScreen();
 
-		WINDOW.add(PANEL);
+		WINDOW.add(panel);
 		WINDOW.setVisible(true);
 	}
 
 	public static void setJPanel(JPanel p) {
-		WINDOW.remove(PANEL);
-		PANEL = p;
-		WINDOW.add(PANEL);
+		WINDOW.remove(panel);
+		panel = p;
+		WINDOW.add(panel);
 	}
 	
 	 public static void log(Level logLevel, String message) {
