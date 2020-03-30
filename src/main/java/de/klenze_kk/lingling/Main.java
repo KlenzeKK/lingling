@@ -12,7 +12,6 @@ public class Main {
 	private static final Logger LOGGER = Logger.getLogger("[Lingling-System]");
 	private static JFrame WINDOW;
 	private static JPanel panel;
-	private static JPanel currentDisplay;
 	
 	public static void main(String[] args) {
 		initWin();
