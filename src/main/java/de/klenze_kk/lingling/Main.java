@@ -1,4 +1,4 @@
-package de.klenze_kk.jingling;
+package de.klenze_kk.lingling;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
