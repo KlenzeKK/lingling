@@ -101,56 +101,90 @@ public final class DatabaseManager {
 
     private static final String USER_COLUMN = "Username";
     private static final String PASSWORD_COLUMN = "Password";
-    private static final String USERNAME_VAR = "%userName%";
-    private static final String LOGIN_QUERY;
-    static {
-        LOGIN_QUERY = new StringBuilder("SELECT * FROM User WHERE ")
-                        .append(USER_COLUMN).append(" = '").append(USERNAME_VAR).append("';").toString();
-    }
 
-    
-    private static final StatisticKey[] STAT_KEYS = StatisticKey.values();
-
-    public void performLogin(Consumer<LoginResponse> consumer, String userName, String password) {
+    public void performLogin(Consumer<User> consumer, String userName, String password) {
         new Thread(new LoginTask(consumer, userName, password)).start();
     }
 
     private final class LoginTask implements Runnable {
 
-        private final Consumer<LoginResponse> consumer;
+        private final Consumer<User> consumer;
         private final String name;
         private final String password;
 
-        protected LoginTask(Consumer<LoginResponse> consumer, String name, String password) {
+        protected LoginTask(Consumer<User> consumer, String name, String password) {
             this.consumer = consumer;
             this.name = name;
             this.password = password;
         }
 
         public void run() {
-            final LoginResponse response;
+            final User user;
             try {
                 openConnection();
 
-                final ResultSet data = connection.createStatement().executeQuery(LOGIN_QUERY.replaceAll(USERNAME_VAR, name));
+                final String query = "SELECT * FROM User WHERE " + USER_COLUMN + " = '" + name + "';";
+                final ResultSet data = connection.createStatement().executeQuery(query);
                 if(data.next()) {
                     if(password.equals(data.getString(PASSWORD_COLUMN))) {
 
                         final EnumMap<StatisticKey,Integer> stats = new EnumMap<StatisticKey,Integer>(StatisticKey.class);
                         // load statistics from ResultSet object
 
-                        response = new LoginResponse.SuccessfulLogin(new User(name, stats));
+                        user = new User(name, stats);
                     }
-                    else response = LoginResponse.FailedLogin.WRONG_PASSWORD;
+                    else user = null;
                 }
-                else response = LoginResponse.FailedLogin.USER_UNKNOWN;
+                else user = null;
             }
             catch (Exception ex) {
                 Main.log(Level.SEVERE, "Failed to check login data", ex);
                 return;
             }
 
-            consumer.accept(response);
+            consumer.accept(user);
+        }
+
+    }
+
+    public User registerUser(String userName, String password) {
+        new Thread(new RegistrationTask(userName, password)).start();
+
+        return new User(userName, new EnumMap<StatisticKey,Integer>(StatisticKey.class));
+    }
+
+    private final class RegistrationTask implements Runnable {
+
+        private final String userName;
+        private final String password;
+
+        protected RegistrationTask(String userName, String password) {
+            this.userName = userName;
+            this.password = password;
+        }
+
+        public void run() { 
+            try {
+                openConnection();
+                connection.createStatement().executeUpdate(this.buildCommand());
+            }
+            catch (Exception ex) {
+                Main.log(Level.SEVERE, "Failed to save user data", ex);
+            }
+        }
+
+        private String buildCommand() {
+            final StatisticKey[] statKeys = StatisticKey.values();
+            final StringBuilder cmdBuilder = new StringBuilder("INSERT INTO User (");
+            cmdBuilder.append(USER_COLUMN).append(", ").append(PASSWORD_COLUMN);
+            for(StatisticKey s: statKeys)
+                cmdBuilder.append(", ").append(s.databaseColumn);
+
+            cmdBuilder.append(") VALUES (").append(userName).append(", ").append(password);
+            for(int i = 0; i < statKeys.length; i++)
+                cmdBuilder.append(", ").append(0);
+            
+            return cmdBuilder.append(");").toString();
         }
 
     }
