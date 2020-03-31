@@ -134,7 +134,7 @@ public final class DatabaseManager {
 
                 final ResultSet data = connection.createStatement().executeQuery(LOGIN_QUERY.replaceAll(USERNAME_VAR, name));
                 if(data.next()) {
-                    if(password.equals(data.getString(password))) {
+                    if(password.equals(data.getString(PASSWORD_COLUMN))) {
 
                         final EnumMap<StatisticKey,Integer> stats = new EnumMap<StatisticKey,Integer>(StatisticKey.class);
                         // load statistics from ResultSet object
