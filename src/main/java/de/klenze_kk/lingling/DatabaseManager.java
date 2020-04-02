@@ -5,9 +5,7 @@ import java.util.*;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 
-import de.klenze_kk.lingling.logic.StatisticKey;
-import de.klenze_kk.lingling.logic.User;
-import de.klenze_kk.lingling.logic.Vocabulary;
+import de.klenze_kk.lingling.logic.*;
 
 public final class DatabaseManager {
 
@@ -68,23 +66,25 @@ public final class DatabaseManager {
                 openConnection();
 
                 final ResultSet table = connection.createStatement().executeQuery(VOCABULARY_QUERY);
+                String chinese, translation, pinyin, rawPinyin, term;
+                short pageNumber;
                 while (table.next()) {
-                    final String chinese = table.getString(CHINESE_COLUMN);
+                    chinese = table.getString(CHINESE_COLUMN);
                     if(chinese == null) continue;
 
-                    final String translation = table.getString(TRANSLATION_COLUMN);
+                    translation = table.getString(TRANSLATION_COLUMN);
                     if(translation == null) continue;
 
-                    String pinyin = table.getString(PINYIN_COLUMN);
+                    pinyin = table.getString(PINYIN_COLUMN);
                     if(pinyin == null) pinyin = "";
 
-                    String rawPinyin = table.getString(RAW_PINYIN_COLUMN);
+                    rawPinyin = table.getString(RAW_PINYIN_COLUMN);
                     if(rawPinyin == null) rawPinyin = pinyin;
 
-                    String term = table.getString(TERM_COLUMN);
+                    term = table.getString(TERM_COLUMN);
                     if(term == null) term = "";
 
-                    final short pageNumber = table.getShort(PAGE_NUMBER_COLUMN);
+                    pageNumber = table.getShort(PAGE_NUMBER_COLUMN);
 
                     vocabulary.add(new Vocabulary(chinese, pinyin, rawPinyin, translation, term, pageNumber));
                 }
@@ -111,11 +111,17 @@ public final class DatabaseManager {
         private final Consumer<User> consumer;
         private final String name;
         private final String password;
+        private final String query;
 
         protected LoginTask(Consumer<User> consumer, String name, String password) {
             this.consumer = consumer;
             this.name = name;
             this.password = password;
+            this.query = new StringBuilder()
+                .append("SELECT * FROM User WHERE ")
+                .append(USER_COLUMN)
+                .append(" = '").append(name)
+                .append("';").toString();
         }
 
         public void run() {
@@ -123,13 +129,13 @@ public final class DatabaseManager {
             try {
                 openConnection();
 
-                final String query = "SELECT * FROM User WHERE " + USER_COLUMN + " = '" + name + "';";
                 final ResultSet data = connection.createStatement().executeQuery(query);
                 if(data.next()) {
                     if(password.equals(data.getString(PASSWORD_COLUMN))) {
 
                         final EnumMap<StatisticKey,Integer> stats = new EnumMap<StatisticKey,Integer>(StatisticKey.class);
-                        // load statistics from ResultSet object
+                        for(StatisticKey key: StatisticKey.values())
+                            stats.put(key, data.getInt(key.databaseColumn));
 
                         user = new User(name, stats);
                     }
@@ -155,36 +161,105 @@ public final class DatabaseManager {
 
     private final class RegistrationTask implements Runnable {
 
-        private final String userName;
-        private final String password;
+        private final String command;
 
         protected RegistrationTask(String userName, String password) {
-            this.userName = userName;
-            this.password = password;
+            this.command = new StringBuilder()
+                .append("INSERT INTO User (")
+                .append(USER_COLUMN).append(", ")
+                .append(PASSWORD_COLUMN)
+                .append(") VALUES (")
+                .append(userName).append(",")
+                .append(password).append(");")
+                .toString();
         }
 
         public void run() { 
             try {
                 openConnection();
-                connection.createStatement().executeUpdate(this.buildCommand());
+                connection.createStatement().executeUpdate(command);
             }
             catch (Exception ex) {
                 Main.log(Level.SEVERE, "Failed to save user data", ex);
             }
         }
 
-        private String buildCommand() {
-            final StatisticKey[] statKeys = StatisticKey.values();
-            final StringBuilder cmdBuilder = new StringBuilder("INSERT INTO User (");
-            cmdBuilder.append(USER_COLUMN).append(", ").append(PASSWORD_COLUMN);
-            for(StatisticKey s: statKeys)
-                cmdBuilder.append(", ").append(s.databaseColumn);
+    }
 
-            cmdBuilder.append(") VALUES (").append(userName).append(", ").append(password);
-            for(int i = 0; i < statKeys.length; i++)
-                cmdBuilder.append(", ").append(0);
-            
-            return cmdBuilder.append(");").toString();
+    public void updateStats(User user, StatisticKey key, int newValue) {
+        new Thread(new StatisticUpdater(user, key, newValue)).start();
+    }
+
+    private final class StatisticUpdater implements Runnable {
+
+        private final String command;
+
+        protected StatisticUpdater(User user, StatisticKey key, int newValue) {
+            this.command = new StringBuilder()
+                .append("UPDATE User SET ")
+                .append(key.databaseColumn)
+                .append(" = ").append(newValue)
+                .append("WHERE").append(USER_COLUMN)
+                .append(" = '").append(user.name)
+                .append("';")
+                .toString();
+        }
+
+        public void run() {
+            try {
+                openConnection();
+                connection.createStatement().executeUpdate(command);
+            }
+            catch (Exception ex) {
+                Main.log(Level.SEVERE, "Failed to update statistics", ex);
+            }
+        }
+
+    }
+
+    public void createRanking(Consumer<LinkedHashMap<String,Integer>> consumer, StatisticKey key) {
+        new Thread(new RankingCreator(consumer, key)).start();
+    }
+
+    private final class RankingCreator implements Runnable {
+
+        private final Consumer<LinkedHashMap<String,Integer>> consumer;
+        private final StatisticKey key;
+        private final String query;
+
+        protected RankingCreator(Consumer<LinkedHashMap<String,Integer>> consumer, StatisticKey key) {
+            this.consumer = consumer;
+            this.key = key;
+            this.query = new StringBuilder()
+                .append("SELECT ")
+                .append(USER_COLUMN).append(", ")
+                .append(key.databaseColumn)
+                .append(" FROM User ORDER BY ")
+                .append(key.databaseColumn)
+                .append( " DESC;")
+                .toString();
+        }
+
+        public void run() {
+            final LinkedHashMap<String,Integer> ranking = new LinkedHashMap<String,Integer>();
+            try {
+                openConnection();
+
+                final ResultSet stats = connection.createStatement().executeQuery(query);
+                String userName;
+                while (stats.next()) {
+                    userName = stats.getString(USER_COLUMN);
+                    if(userName == null) continue;
+
+                    ranking.put(userName, stats.getInt(key.databaseColumn));
+                }
+            }
+            catch (Exception ex) {
+                Main.log(Level.SEVERE, "Failed to load statistics", ex);
+                return;
+            }
+
+            consumer.accept(ranking);
         }
 
     }
