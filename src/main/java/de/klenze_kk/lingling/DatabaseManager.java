@@ -236,7 +236,7 @@ public final class DatabaseManager {
                 .append(key.databaseColumn)
                 .append(" FROM User ORDER BY ")
                 .append(key.databaseColumn)
-                .append( " DESC;")
+                .append(" DESC;")
                 .toString();
         }
 
