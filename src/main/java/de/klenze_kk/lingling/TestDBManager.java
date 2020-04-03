@@ -64,8 +64,24 @@ public final class TestDBManager {
     public void updateStats(User user, StatisticKey key, int newValue) {}
 
     public void createRanking(Consumer<LinkedHashMap<String,Integer>> consumer, StatisticKey key) {
-        final LinkedHashMap<String,Integer> m = new LinkedHashMap<String,Integer>();
-        m.put("KlenzeKK", 5);
+        new Thread(new RankingCreator(consumer)).start();
+    }
+
+    private final class RankingCreator implements Runnable {
+
+        final Consumer<LinkedHashMap<String,Integer>> consumer;
+
+        protected RankingCreator(Consumer<LinkedHashMap<String,Integer>> consumer) {
+            this.consumer = consumer;
+        }
+
+        public void run() {
+            final LinkedHashMap<String,Integer> m = new LinkedHashMap<String,Integer>();
+            m.put("KlenzeKK", 5);
+
+            consumer.accept(m);
+        }
+
     }
 
 }
