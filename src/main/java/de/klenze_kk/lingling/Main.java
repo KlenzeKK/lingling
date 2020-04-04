@@ -1,8 +1,5 @@
 package de.klenze_kk.lingling;
 
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -11,7 +8,7 @@ import javax.swing.SwingConstants;
 import de.klenze_kk.lingling.Gui.*;
 
 public class Main {
-	private static final Logger LOGGER = Logger.getLogger("[Lingling-System]");
+	
 	private static JFrame WINDOW;
 	private static JPanel panel;
 	private static DatabaseManager DATABASE_MANAGER;
@@ -43,17 +40,6 @@ public class Main {
 		WINDOW.add(panel);
 	}
 	
-	 public static void log(Level logLevel, String message) {
-	        synchronized (LOGGER) {
-	            LOGGER.log(logLevel, message);
-	        }
-	    }
-	 
-	   public static void log(Level logLevel, String message, Throwable error) {
-	        synchronized (LOGGER) {
-	            LOGGER.log(logLevel, message, error);
-	        }
-	    }
 	  
 	   public static DatabaseManager getDatabaseManager() {
 			return DATABASE_MANAGER;
