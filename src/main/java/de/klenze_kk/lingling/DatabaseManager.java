@@ -3,7 +3,6 @@ package de.klenze_kk.lingling;
 import java.sql.*;
 import java.util.*;
 import java.util.function.Consumer;
-import java.util.logging.Level;
 
 import de.klenze_kk.lingling.logic.*;
 
@@ -90,7 +89,7 @@ public final class DatabaseManager {
                 }
             }
             catch (Exception ex) {
-                Main.log(Level.SEVERE, "Failed to load vocabulary", ex);
+                Main.handleError("Failed to load vocabulary: " + ex, true);
                 return;
             }
 
@@ -144,7 +143,7 @@ public final class DatabaseManager {
                 else user = null;
             }
             catch (Exception ex) {
-                Main.log(Level.SEVERE, "Failed to check login data", ex);
+                Main.handleError("Failed to check login data: " + ex, true);
                 return;
             }
 
@@ -180,7 +179,7 @@ public final class DatabaseManager {
                 connection.createStatement().executeUpdate(command);
             }
             catch (Exception ex) {
-                Main.log(Level.SEVERE, "Failed to save user data", ex);
+                Main.handleError("Failed to register user: " + ex, true);
             }
         }
 
@@ -211,7 +210,7 @@ public final class DatabaseManager {
                 connection.createStatement().executeUpdate(command);
             }
             catch (Exception ex) {
-                Main.log(Level.SEVERE, "Failed to update statistics", ex);
+                Main.handleError("Failed to store statistics: " + ex, false);
             }
         }
 
@@ -255,7 +254,8 @@ public final class DatabaseManager {
                 }
             }
             catch (Exception ex) {
-                Main.log(Level.SEVERE, "Failed to load statistics", ex);
+                consumer.accept(null);
+                Main.handleError("Failed to load statistics: " + ex, false);
                 return;
             }
 
