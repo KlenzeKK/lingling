@@ -35,9 +35,9 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
 
         query = query.toLowerCase();
 
-        for(Short s: pageNumbers) {
+        for(Short s: pageNumbers != null ? pageNumbers : pagesCache.keySet()) {
             for(Vocabulary voc: pagesCache.get(s)) {
-                if(!terms.contains(voc.term) ||
+                if((terms != null ? !terms.contains(voc.term) : false) ||
                    !voc.chinese.contains(query) ||
                    !voc.rawPinyin.toLowerCase().contains(query) ||
                    !voc.translation.toLowerCase().contains(query)) continue;
