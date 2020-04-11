@@ -38,7 +38,7 @@ public final class DatabaseManager {
         this.connection = DriverManager.getConnection(url, userName, password);
     }
 
-    public void loadVocabulary(Consumer<Set<Vocabulary>> consumer) {
+    public void loadVocabulary(Consumer<List<Vocabulary>> consumer) {
         new Thread(new VocabularyLoader(consumer)).start();
     }
 
@@ -52,14 +52,14 @@ public final class DatabaseManager {
 
     private final class VocabularyLoader implements Runnable {
 
-        private final Consumer<Set<Vocabulary>> consumer;
+        private final Consumer<List<Vocabulary>> consumer;
 
-        protected VocabularyLoader(Consumer<Set<Vocabulary>> consumer) {
+        protected VocabularyLoader(Consumer<List<Vocabulary>> consumer) {
             this.consumer = consumer;
         }
 
         public void run() {
-            final Set<Vocabulary> vocabulary = new HashSet<Vocabulary>();
+            final List<Vocabulary> vocabulary = new LinkedList<Vocabulary>();
 
             try {
                 openConnection();
