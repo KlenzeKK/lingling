@@ -3,12 +3,12 @@ package de.klenze_kk.lingling.logic;
 import java.util.*;
 import java.util.function.Consumer;
 
-public final class VocabularyManager implements Consumer<Set<Vocabulary>> {
+public final class VocabularyManager implements Consumer<List<Vocabulary>> {
 
-    private final Set<Vocabulary> vocabulary = new HashSet<Vocabulary>();
-    private final Map<Short,Set<Vocabulary>> pagesCache = new HashMap<Short,Set<Vocabulary>>();
+    private final Set<Vocabulary> vocabulary = new LinkedHashSet<Vocabulary>();
+    private final Map<Short,Set<Vocabulary>> pagesCache = new LinkedHashMap<Short,Set<Vocabulary>>();
 
-    public synchronized void accept(Set<Vocabulary> vocs) {
+    public synchronized void accept(List<Vocabulary> vocs) {
         vocabulary.clear();
         pagesCache.clear();
 
@@ -27,11 +27,11 @@ public final class VocabularyManager implements Consumer<Set<Vocabulary>> {
     }
 
     public synchronized Set<Vocabulary> getVocabualary() {
-        return new HashSet<Vocabulary>(vocabulary);
+        return new LinkedHashSet<Vocabulary>(vocabulary);
     }
 
     public synchronized Set<Vocabulary> performQuery(String query, Set<Short> pageNumbers, Set<String> terms) {
-        final Set<Vocabulary> queryResult = new HashSet<Vocabulary>();
+        final Set<Vocabulary> queryResult = new LinkedHashSet<Vocabulary>();
 
         query = query.toLowerCase();
 
