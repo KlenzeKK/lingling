@@ -49,7 +49,7 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
         return queryResult;
     }
 
-    public boolean correctTranslation(String chinese, String german) {
+    public synchronized boolean correctTranslation(String chinese, String german) {
         for(Vocabulary voc: vocabulary) {
             if(voc.chinese.equals(chinese) && voc.translation.equalsIgnoreCase(german))
                 return true;
