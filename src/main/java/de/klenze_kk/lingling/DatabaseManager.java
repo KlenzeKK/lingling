@@ -49,6 +49,7 @@ public final class DatabaseManager {
     private static final String TRANSLATION_COLUMN = "Translation";
     private static final String TERM_COLUMN = "Term";
     private static final String PAGE_NUMBER_COLUMN = "Page_Number";
+    private static final String GIF_COLUMN = "Gif";
 
     private final class VocabularyLoader implements Runnable {
 
@@ -67,6 +68,7 @@ public final class DatabaseManager {
                 final ResultSet table = connection.createStatement().executeQuery(VOCABULARY_QUERY);
                 String chinese, translation, pinyin, rawPinyin, term;
                 short pageNumber;
+                byte[] gif;
                 while (table.next()) {
                     chinese = table.getString(CHINESE_COLUMN);
                     if(chinese == null) continue;
@@ -85,7 +87,10 @@ public final class DatabaseManager {
 
                     pageNumber = table.getShort(PAGE_NUMBER_COLUMN);
 
-                    vocabulary.add(new Vocabulary(chinese, pinyin, rawPinyin, translation, term, pageNumber));
+                    gif = table.getBytes(GIF_COLUMN);
+                    if(gif == null) gif = new byte[] {};
+
+                    vocabulary.add(new Vocabulary(chinese, pinyin, rawPinyin, translation, term, pageNumber, gif));
                 }
             }
             catch (Exception ex) {
