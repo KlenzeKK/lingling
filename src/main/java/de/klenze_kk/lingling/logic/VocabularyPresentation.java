@@ -10,13 +10,13 @@ public final class VocabularyPresentation extends TimerTask {
     private static boolean isPresenting = false;
 
     private final PresentationPanel panel;
-    private final ListIterator<Vocabulary> vocabularyItr;
+    private final PresentationIterator vocabularyItr;
 
     private boolean paused = false;
     
     private VocabularyPresentation(PresentationPanel panel, List<Vocabulary> vocabularyList) {
         this.panel = panel;
-        this.vocabularyItr = vocabularyList.listIterator();
+        this.vocabularyItr = new PresentationIterator(vocabularyList);
     }
 
     @Override
@@ -54,9 +54,41 @@ public final class VocabularyPresentation extends TimerTask {
 
         isPresenting = true;
 
-        final VocabularyPresentation p = new VocabularyPresentation(panel, new ArrayList<Vocabulary>(vocabularyList));
+        final VocabularyPresentation p = new VocabularyPresentation(panel, vocabularyList);
         TIMER.schedule(p, 0, MILLS_PER_VOC);
         return p;
+    }
+
+    private final class PresentationIterator implements Iterator<Vocabulary> {
+
+        private final Vocabulary[] vocabulary;
+
+        private int cursor = -1;
+        
+        protected PresentationIterator(List<Vocabulary> data) {
+            this.vocabulary = data.toArray(new Vocabulary[data.size()]);
+        }
+
+        public boolean hasNext() {
+            return cursor + 1 < vocabulary.length;
+        }
+
+        public Vocabulary next() {
+            if(!hasNext()) throw new NoSuchElementException();
+
+            return vocabulary[++cursor];
+        }
+
+        public boolean hasPrevious() {
+            return cursor > 0;
+        }
+
+        public Vocabulary previous() {
+            if(!hasPrevious()) throw new NoSuchElementException();
+
+            return vocabulary[--cursor];
+        }        
+
     }
 
 }
