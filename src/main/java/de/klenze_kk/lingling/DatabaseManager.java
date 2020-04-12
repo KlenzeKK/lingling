@@ -157,18 +157,26 @@ public final class DatabaseManager {
 
     }
 
-    public User registerUser(String userName, String password) {
-        new Thread(new RegistrationTask(userName, password)).start();
-
-        return new User(userName, new EnumMap<StatisticKey,Integer>(StatisticKey.class));
+    public void registerUser(Consumer<User> consumer, String userName, String password) {
+        new Thread(new RegistrationTask(consumer, userName, password)).start();
     }
 
     private final class RegistrationTask implements Runnable {
 
-        private final String command;
+        private final Consumer<User> consumer;
+        private final String userName;
+        private final String query;
+        private final String updateCommand;
 
-        protected RegistrationTask(String userName, String password) {
-            this.command = new StringBuilder()
+        protected RegistrationTask(Consumer<User> consumer, String userName, String password) {
+            this.consumer = consumer;
+            this.userName = userName;
+            this.query = new StringBuilder()
+                .append("SELECT COUNT(*) AS Nutzerzahl FROM User WHERE ")
+                .append(USER_COLUMN).append(" = '")
+                .append(userName).append("';")
+                .toString();
+            this.updateCommand = new StringBuilder()
                 .append("INSERT INTO User (")
                 .append(USER_COLUMN).append(", ")
                 .append(PASSWORD_COLUMN)
@@ -179,9 +187,17 @@ public final class DatabaseManager {
         }
 
         public void run() { 
-            try {
+            try {  
                 openConnection();
-                connection.createStatement().executeUpdate(command);
+                final Statement statement = connection.createStatement();
+                final ResultSet result = statement.executeQuery(query);
+                result.next();
+
+                if(result.getInt("Nutzerzahl") <= 0) {
+                    consumer.accept(new User(userName, new EnumMap<StatisticKey,Integer>(StatisticKey.class)));
+                    statement.executeUpdate(updateCommand);
+                }
+                else consumer.accept(null);
             }
             catch (Exception ex) {
                 Main.handleError("Failed to register user: " + ex, true);
