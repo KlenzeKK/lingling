@@ -172,7 +172,7 @@ public final class DatabaseManager {
             this.consumer = consumer;
             this.userName = userName;
             this.query = new StringBuilder()
-                .append("SELECT COUNT(*) AS Nutzerzahl FROM User WHERE ")
+                .append("SELECT COUNT(*) AS User_Count FROM User WHERE ")
                 .append(USER_COLUMN).append(" = '")
                 .append(userName).append("';")
                 .toString();
@@ -193,7 +193,7 @@ public final class DatabaseManager {
                 final ResultSet result = statement.executeQuery(query);
                 result.next();
 
-                if(result.getInt("Nutzerzahl") <= 0) {
+                if(result.getInt("User_Count") <= 0) {
                     consumer.accept(new User(userName, new EnumMap<StatisticKey,Integer>(StatisticKey.class)));
                     statement.executeUpdate(updateCommand);
                 }
