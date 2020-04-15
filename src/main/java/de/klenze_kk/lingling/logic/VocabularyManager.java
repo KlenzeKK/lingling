@@ -5,6 +5,7 @@ import java.util.function.Consumer;
 
 public final class VocabularyManager implements Consumer<List<Vocabulary>> {
 
+    protected final Set<VocabularySet> sets = new HashSet<VocabularySet>();
     private final Set<Vocabulary> vocabulary = new LinkedHashSet<Vocabulary>();
     private final Map<Short,Set<Vocabulary>> pagesCache = new LinkedHashMap<Short,Set<Vocabulary>>();
 
@@ -37,9 +38,9 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
 
         for(Short s: pageNumbers != null ? pageNumbers : pagesCache.keySet()) {
             for(Vocabulary voc: pagesCache.get(s)) {
-                if((terms != null ? !terms.contains(voc.term) : false) ||
-                   !voc.chinese.contains(query) ||
-                   !voc.rawPinyin.toLowerCase().contains(query) ||
+                if(terms != null && !terms.contains(voc.term)) continue;
+                if(!voc.chinese.contains(query) &&
+                   !voc.rawPinyin.toLowerCase().contains(query) &&
                    !voc.translation.toLowerCase().contains(query)) continue;
 
                 queryResult.add(voc);
@@ -56,6 +57,18 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
         }
 
         return false;
+    }
+
+    public Set<VocabularySet> getVocabularySets() {
+        synchronized (sets) {
+            return new HashSet<VocabularySet>(sets);
+        }
+    }
+
+    public void registerSet(VocabularySet set) {
+        synchronized (sets) {
+            sets.add(set);
+        }
     }
 
 }
