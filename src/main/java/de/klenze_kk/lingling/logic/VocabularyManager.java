@@ -27,7 +27,7 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
         }
     }
 
-    public synchronized Set<Vocabulary> getVocabualary() {
+    public synchronized Set<Vocabulary> getVocabulary() {
         return new LinkedHashSet<Vocabulary>(vocabulary);
     }
 
