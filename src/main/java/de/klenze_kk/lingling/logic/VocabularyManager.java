@@ -82,4 +82,14 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
         return true;
     }
 
+    public void logOut() {
+        synchronized (this) {
+            vocabulary.clear();
+            pagesCache.clear();
+        }   
+        synchronized (sets) {
+            sets.clear();
+        }
+    }
+
 }
