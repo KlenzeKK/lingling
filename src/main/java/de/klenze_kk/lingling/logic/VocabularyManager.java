@@ -2,6 +2,7 @@ package de.klenze_kk.lingling.logic;
 
 import java.util.*;
 import java.util.function.Consumer;
+import de.klenze_kk.lingling.Main;
 
 public final class VocabularyManager implements Consumer<List<Vocabulary>> {
 
