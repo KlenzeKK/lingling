@@ -25,6 +25,7 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
 
             currentPage.add(voc);
         }
+        Main.setJPanel(new de.klenze_kk.lingling.Gui.Hub());
     }
 
     public synchronized Set<Vocabulary> getVocabulary() {
