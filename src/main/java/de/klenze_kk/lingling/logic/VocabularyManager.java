@@ -71,4 +71,15 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
         }
     }
 
+    public boolean setNameAvailable(String name) {
+        synchronized (sets) {
+            for(VocabularySet set: sets) {
+                if(set.name.equals(name))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
 }
