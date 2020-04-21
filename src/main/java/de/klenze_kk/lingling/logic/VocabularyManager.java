@@ -93,5 +93,10 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
             sets.clear();
         }
     }
-
+    
+    public void deleteSet(VocabularySet v){
+        synchronized (sets) {
+            sets.remove(v);
+        }
+    }
 }
