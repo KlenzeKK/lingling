@@ -2,6 +2,8 @@ package de.klenze_kk.lingling.logic;
 
 import java.util.*;
 
+import de.klenze_kk.lingling.Main;
+
 public final class VocabularySet implements Iterable<Vocabulary> {
 
     public final int id;
@@ -23,37 +25,24 @@ public final class VocabularySet implements Iterable<Vocabulary> {
         return content.size();
     }
 
-    public void add(Vocabulary voc) {
-        if(template) throw new UnsupportedOperationException();
-
+    public void registerVoc(Vocabulary voc) {
         content.add(voc);
     }
 
-    public void add(Set<Vocabulary> vocs) {
+    public void modify(Set<Vocabulary> add, Set<Vocabulary> remove) {
         if(template) throw new UnsupportedOperationException();
-
-        content.addAll(vocs);
-    }
-
-    public void remove(Vocabulary voc) {
-        if(template) throw new UnsupportedOperationException();
-
-        content.add(voc);
-    }
-
-    public void remove(Set<Vocabulary> voc) {
-        if(template) throw new UnsupportedOperationException();
-
-        content.removeAll(voc);
+    
+        content.addAll(add);
+        content.removeAll(remove);
+        Main.getDatabaseManager().modifyVocabularySet(this, add, remove);
     }
     
-    public boolean contains(Vocabulary v){
+    public boolean contains(Vocabulary v) {
         return content.contains(v);
     }
     
-    public Set<Vocabulary> getContent(){
+    public Set<Vocabulary> getContent() {
         return content;
     }
     
-
 }
