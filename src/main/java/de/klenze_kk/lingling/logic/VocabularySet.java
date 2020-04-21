@@ -46,5 +46,14 @@ public final class VocabularySet implements Iterable<Vocabulary> {
 
         content.removeAll(voc);
     }
+    
+    public boolean contains(Vocabulary v){
+        return content.contains(v);
+    }
+    
+    public Set<Vocabulary> getContent(){
+        return content;
+    }
+    
 
 }
