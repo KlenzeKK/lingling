@@ -3,13 +3,15 @@ package de.klenze_kk.lingling.logic;
 import java.util.*;
 import java.util.function.Consumer;
 import de.klenze_kk.lingling.Main;
-import de.klenze_kk.lingling.Gui.Hub;
+import java.io.File;
+import java.nio.file.Files;
 
 public final class VocabularyManager implements Consumer<List<Vocabulary>> {
 
     protected final Set<VocabularySet> sets = new HashSet<VocabularySet>();
     private final Set<Vocabulary> vocabulary = new LinkedHashSet<Vocabulary>();
     private final Map<Short,Set<Vocabulary>> pagesCache = new LinkedHashMap<Short,Set<Vocabulary>>();
+    private final Map<Character, byte[]> gifs = new HashMap<>();
 
     public synchronized void accept(List<Vocabulary> vocs) {
         vocabulary.clear();
@@ -27,7 +29,15 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
 
             currentPage.add(voc);
         }
-        Main.setJPanel(new Hub());
+        try {
+            gifs.put('你', Files.readAllBytes(new File("source/gif/ni.gif").toPath()));
+            gifs.put('好', Files.readAllBytes(new File("source/gif/hao.gif").toPath()));
+            gifs.put('蔬', Files.readAllBytes(new File("source/gif/shu.gif").toPath()));
+            gifs.put('菜', Files.readAllBytes(new File("source/gif/cai.gif").toPath()));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        Main.setJPanel(new de.klenze_kk.lingling.Gui.Hub());
     }
 
     public synchronized Set<Vocabulary> getVocabulary() {
@@ -85,13 +95,6 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
         return true;
     }
 
-    public void deleteSet(VocabularySet v) {
-        synchronized (sets) {
-            sets.remove(v);
-        }
-        Main.getDatabaseManager().deleteVocabularySet(v);
-    }
-
     public void logOut() {
         synchronized (this) {
             vocabulary.clear();
@@ -101,5 +104,15 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
             sets.clear();
         }
     }
-
+    
+    public void deleteSet(VocabularySet v){
+        synchronized (sets) {
+            sets.remove(v);
+        }
+    }
+    
+    public byte[] getGif(char c){
+        return gifs.get(c);
+    }
+    
 }
