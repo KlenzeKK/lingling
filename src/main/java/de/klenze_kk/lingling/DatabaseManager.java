@@ -42,6 +42,19 @@ public final class DatabaseManager {
         this.connection = DriverManager.getConnection(url, userName, password);
     }
 
+    public void closeConnection() {
+        if(connection == null) return;
+
+        try {
+            if(!connection.isClosed())
+                connection.close();
+            connection = null;
+        }
+        catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+
     public void loadVocabulary(User u, Consumer<List<Vocabulary>> vocConsumer, Consumer<Set<VocabularySet>> setConsumer) {
         new Thread(new VocabularyLoader(u, vocConsumer, setConsumer)).start();
     }
@@ -53,12 +66,15 @@ public final class DatabaseManager {
     private static final String TRANSLATION_COLUMN = "Translation";
     private static final String TERM_COLUMN = "Term";
     private static final String PAGE_NUMBER_COLUMN = "Page_Number";
-    private static final String GIF_COLUMN = "Gif";
+    private static final String GIF_QUERY = "SELECT * FROM Gifs";
     private static final String VOCABULARY_QUERY = 
         new StringBuilder("SELECT * FROM Vocabulary ORDER BY ").append(TRANSLATION_COLUMN).append(";").toString();
 
     private static final String SET_ID_COLUMN = "SetID";
     private static final String SET_NAME_COLUMN = "Name";
+
+    private static final String CHARACTER_COLUMN = "Character";
+    private static final String GIF_COLUMN = "Gif";
 
     private final class VocabularyLoader implements Runnable {
 
@@ -80,11 +96,13 @@ public final class DatabaseManager {
         }
 
         public void run() {
+            Statement statement = null;
+            ResultSet result = null;
             try {
                 openConnection();
 
-                final Statement statement = connection.createStatement();
-                ResultSet result = statement.executeQuery(VOCABULARY_QUERY);
+                statement = connection.createStatement();
+                result = statement.executeQuery(VOCABULARY_QUERY);
 
                 final Map<Integer,Vocabulary> vocabulary = this.loadVocabulary(result);
                 vocConsumer.accept(new ArrayList<Vocabulary>(vocabulary.values()));
@@ -92,10 +110,19 @@ public final class DatabaseManager {
                 result = null;
 
                 setConsumer.accept(this.loadSets(result = statement.executeQuery(vocabularySetQuery), vocabulary));
+                result.close();
+                result = null;
+
+                result = statement.executeQuery(GIF_QUERY);
+                while (result.next())
+                    Main.VOCABULARY.registerGif(result.getString(CHARACTER_COLUMN).charAt(0), result.getBytes(GIF_COLUMN));
             }
             catch (Exception ex) {
                 Main.handleError("Failed to load vocabulary: " + ex, true);
                 return;
+            }
+            finally { 
+                closeResources(statement, result);
             }
         }
 
@@ -105,7 +132,6 @@ public final class DatabaseManager {
             int id;
             short pageNumber;
             String chinese, translation, pinyin, rawPinyin, term;
-            byte[] gif;
             while (result.next()) {
                 id = result.getInt(VOC_ID_COLUMN);
 
@@ -126,10 +152,7 @@ public final class DatabaseManager {
 
                 pageNumber = result.getShort(PAGE_NUMBER_COLUMN);
 
-                gif = result.getBytes(GIF_COLUMN);
-                if(gif == null) gif = new byte[] {};
-
-                vocabulary.put(id, new Vocabulary(id, chinese, pinyin, rawPinyin, translation, term, pageNumber, gif));
+                vocabulary.put(id, new Vocabulary(id, chinese, pinyin, rawPinyin, translation, term, pageNumber));
             }
 
             return vocabulary;
@@ -190,10 +213,12 @@ public final class DatabaseManager {
 
         public void run() {
             final User user;
+            Statement statement = null;
+            ResultSet data = null;
             try {
                 openConnection();
 
-                final ResultSet data = connection.createStatement().executeQuery(query);
+                data = (statement = connection.createStatement()).executeQuery(query);
                 if(data.next()) {
                     if(password.equals(data.getString(PASSWORD_COLUMN))) {
 
@@ -210,6 +235,9 @@ public final class DatabaseManager {
             catch (Exception ex) {
                 Main.handleError("Failed to check login data: " + ex, true);
                 return;
+            }
+            finally {
+                closeResources(statement, data);
             }
 
             consumer.accept(user);
@@ -247,10 +275,12 @@ public final class DatabaseManager {
         }
 
         public void run() { 
+            Statement statement = null;
+            ResultSet result = null;
             try {  
                 openConnection();
-                final Statement statement = connection.createStatement();
-                final ResultSet result = statement.executeQuery(query);
+                statement = connection.createStatement();
+                result = statement.executeQuery(query);
                 result.next();
 
                 if(result.getInt("User_Count") <= 0) {
@@ -261,6 +291,9 @@ public final class DatabaseManager {
             }
             catch (Exception ex) {
                 Main.handleError("Failed to register user: " + ex, true);
+            }
+            finally {
+                closeResources(statement, result);
             }
         }
 
@@ -298,13 +331,15 @@ public final class DatabaseManager {
         }
 
         public void run() {
+            Statement statement = null;
+            ResultSet result = null;
             try {
                 openConnection();
 
-                final Statement statement = connection.createStatement();
+                statement = connection.createStatement();
                 statement.executeUpdate(command);
 
-                final ResultSet result = statement.executeQuery(idQuery);
+                result = statement.executeQuery(idQuery);
                 result.next();
 
                 final VocabularySet createdSet = new VocabularySet(result.getInt(SET_ID_COLUMN), name, false);
@@ -313,6 +348,9 @@ public final class DatabaseManager {
             }
             catch (Exception ex) {
                 Main.handleError("Failed to create vocabulary set: " + ex, false);
+            }
+            finally {
+                closeResources(statement, result);
             }
         }
 
@@ -344,6 +382,8 @@ public final class DatabaseManager {
         }
 
         public void run() {
+            Statement statement = null;
+            ResultSet result = null;
             try {
                 openConnection();
                 
@@ -369,6 +409,9 @@ public final class DatabaseManager {
             catch (Exception ex) {
                 Main.handleError("Failed to update vocabulary set: " + ex, false);
             }
+            finally {
+                closeResources(statement, result);
+            }
         }
 
     }
@@ -390,12 +433,16 @@ public final class DatabaseManager {
         }
 
         public void run() {
+            Statement statement = null;
             try {
                 openConnection();
-                connection.createStatement().executeUpdate(command);
+                (statement = connection.createStatement()).executeUpdate(command);
             }
             catch (Exception ex) {
                 Main.handleError("Failed to delete vocabulary set: " + ex, false);
+            }
+            finally {
+                closeResources(statement, null);
             }
         }
 
@@ -421,12 +468,16 @@ public final class DatabaseManager {
         }
 
         public void run() {
+            Statement statement = null;
             try {
                 openConnection();
-                connection.createStatement().executeUpdate(command);
+                (statement = connection.createStatement()).executeUpdate(command);
             }
             catch (Exception ex) {
                 Main.handleError("Failed to store statistics: " + ex, false);
+            }
+            finally {
+                closeResources(statement, null);
             }
         }
 
@@ -457,10 +508,12 @@ public final class DatabaseManager {
 
         public void run() {
             final LinkedHashMap<String,Integer> ranking = new LinkedHashMap<String,Integer>();
+            Statement statement = null;
+            ResultSet stats = null;
             try {
                 openConnection();
 
-                final ResultSet stats = connection.createStatement().executeQuery(query);
+                stats = (statement = connection.createStatement()).executeQuery(query);
                 String userName;
                 while (stats.next()) {
                     userName = stats.getString(USER_COLUMN);
@@ -474,10 +527,29 @@ public final class DatabaseManager {
                 Main.handleError("Failed to load statistics: " + ex, false);
                 return;
             }
+            finally {
+                closeResources(statement, stats);
+            }
 
             consumer.accept(ranking);
         }
 
+    }
+
+    private static void closeResources(Statement statement, ResultSet result) {
+        if(result != null) {
+            try {
+                result.close();
+            }
+            catch (Exception ex) {}
+        }
+        if(statement != null) {
+            try {
+                if(statement != null)
+                    statement.close();
+            }
+            catch (Exception ex) {}
+        }
     }
 
 }
