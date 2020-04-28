@@ -2,7 +2,7 @@ package de.klenze_kk.lingling.logic;
 
 import java.util.*;
 import java.util.function.Consumer;
-import de.klenze_kk.lingling.Main;
+//import de.klenze_kk.lingling.Main;
 import java.io.File;
 import java.nio.file.Files;
 
@@ -11,7 +11,7 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
     protected final Set<VocabularySet> sets = new HashSet<VocabularySet>();
     private final Set<Vocabulary> vocabulary = new LinkedHashSet<Vocabulary>();
     private final Map<Short,Set<Vocabulary>> pagesCache = new LinkedHashMap<Short,Set<Vocabulary>>();
-    private final Map<Character, byte[]> gifs = new HashMap<>();
+    private final Map<Character,byte[]> gifs = new HashMap<Character,byte[]>();
 
     public synchronized void accept(List<Vocabulary> vocs) {
         vocabulary.clear();
@@ -37,7 +37,7 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        Main.setJPanel(new de.klenze_kk.lingling.Gui.Hub());
+        //Main.setJPanel(new de.klenze_kk.lingling.Gui.Hub());
     }
 
     public synchronized Set<Vocabulary> getVocabulary() {
@@ -105,14 +105,26 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
         }
     }
     
-    public void deleteSet(VocabularySet v){
+    public void deleteSet(VocabularySet v) {
         synchronized (sets) {
             sets.remove(v);
         }
     }
     
-    public byte[] getGif(char c){
-        return gifs.get(c);
+    public byte[] getGif(char c) {
+        synchronized (gifs) {
+            byte[] gif = gifs.get(c);
+            if(gif == null)
+                gifs.put(c, gif = new byte[0]);
+                
+            return gif;
+        }
+    }
+
+    public void registerGif(char c, byte[] bytes) {
+        synchronized (gifs) {
+            gifs.put(c, bytes);
+        }
     }
     
 }
