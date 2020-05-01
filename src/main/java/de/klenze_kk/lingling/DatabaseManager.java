@@ -336,7 +336,7 @@ public final class DatabaseManager {
                 result = statement.getGeneratedKeys();
                 if(!result.next()) throw new SQLException("Insert failed - no generated key was returned");
 
-                final VocabularySet createdSet = new VocabularySet(result.getInt(SET_ID_COLUMN), name, false);
+                final VocabularySet createdSet = new VocabularySet(result.getInt(1), name, false);
                 consumer.accept(createdSet);
                 new SetModifier(createdSet, initialContent, null).run();
             }
