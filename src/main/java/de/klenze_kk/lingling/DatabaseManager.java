@@ -16,7 +16,7 @@ import de.klenze_kk.lingling.logic.*;
 
 public final class DatabaseManager {
 
-    private static final String DRIVER_CLASS = "com.mysql.jdbc.Driver";
+    private static final String DRIVER_CLASS = "com.mysql.cj.jdbc.Driver";
     private static final String URL_PREFIX = "jdbc:mysql://";
 
     private final String url, userName, password;
@@ -56,7 +56,7 @@ public final class DatabaseManager {
     }
 
     public void loadVocabulary(User u, Consumer<List<Vocabulary>> vocConsumer, Consumer<Set<VocabularySet>> setConsumer) {
-        new Thread(new VocabularyLoader(u, vocConsumer, setConsumer)).start();
+       new Thread(new VocabularyLoader(u, vocConsumer, setConsumer)).start();
     }
 
     private static final String VOC_ID_COLUMN = "VocID";
@@ -119,6 +119,7 @@ public final class DatabaseManager {
             }
             catch (Exception ex) {
                 Main.handleError("Failed to load vocabulary: " + ex, true);
+                ex.printStackTrace();
                 return;
             }
             finally { 
@@ -172,7 +173,7 @@ public final class DatabaseManager {
                     setName = result.getString(SET_NAME_COLUMN);
                     if(setName == null) continue;
 
-                    sets.put(setId, new VocabularySet(setId, setName, templateSet));
+                    sets.put(setId, set = new VocabularySet(setId, setName, templateSet));
                 }
 
                 currentVoc = vocs.get(result.getInt(VOC_ID_COLUMN));
@@ -190,7 +191,7 @@ public final class DatabaseManager {
     private static final String PASSWORD_COLUMN = "Password";
 
     public void performLogin(Consumer<User> consumer, String userName, String password) {
-        new Thread(new LoginTask(consumer, userName, password)).start();
+      new Thread(new LoginTask(consumer, userName, password)).start();
     }
 
     private final class LoginTask implements Runnable {
@@ -246,7 +247,7 @@ public final class DatabaseManager {
     }
 
     public void registerUser(Consumer<User> consumer, String userName, String password) {
-        new Thread(new RegistrationTask(consumer, userName, password)).start();
+        new RegistrationTask(consumer, userName, password).run();
     }
 
     private final class RegistrationTask implements Runnable {
@@ -268,9 +269,9 @@ public final class DatabaseManager {
                 .append("INSERT INTO User (")
                 .append(USER_COLUMN).append(", ")
                 .append(PASSWORD_COLUMN)
-                .append(") VALUES (")
-                .append(userName).append(",")
-                .append(password).append(");")
+                .append(") VALUES ('")
+                .append(userName).append("', '")
+                .append(password).append("');")
                 .toString();
         }
 
@@ -300,7 +301,7 @@ public final class DatabaseManager {
     }
 
     public void createVocabularySet(Consumer<VocabularySet> consumer, User user, String name, Set<Vocabulary> initialContent) {
-        new Thread(new SetCreator(consumer, user, name, initialContent)).start();
+        new SetCreator(consumer, user, name, initialContent).run();
     }
 
     private final class SetCreator implements Runnable {
@@ -316,9 +317,9 @@ public final class DatabaseManager {
             this.name = name;
             this.initialContent = initialContent;
             this.command = new StringBuilder()
-                .append("INSERT INTO VocabularySet VALUES (DEFAULT, ")
-                .append(user.name).append(", ")
-                .append(name).append(");")
+                .append("INSERT INTO VocabularySet VALUES (DEFAULT, '")
+                .append(user.name).append("', '")
+                .append(name).append("');")
                 .toString();
             this.idQuery = new StringBuilder()
                 .append("SELECT ").append(SET_ID_COLUMN)
@@ -484,7 +485,7 @@ public final class DatabaseManager {
     }
 
     public void createRanking(Consumer<LinkedHashMap<String,Integer>> consumer, StatisticKey key) {
-        new Thread(new RankingCreator(consumer, key)).start();
+       new Thread(new RankingCreator(consumer, key)).start();
     }
 
     private final class RankingCreator implements Runnable {
