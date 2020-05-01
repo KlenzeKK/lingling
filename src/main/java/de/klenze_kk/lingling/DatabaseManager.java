@@ -89,7 +89,7 @@ public final class DatabaseManager {
                 .append("SELECT * FROM VocabularySet, SetContents WHERE VocabularySet.")
                 .append(SET_ID_COLUMN).append(" = SetContents.")
                 .append(SET_ID_COLUMN).append(" AND (")
-                .append(USER_COLUMN).append(" = '' OR ")
+                .append(USER_COLUMN).append(" IS NULL OR ")
                 .append(USER_COLUMN).append(" = '")
                 .append(user.name).append("');")
                 .toString();
