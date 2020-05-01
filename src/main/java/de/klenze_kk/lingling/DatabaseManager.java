@@ -300,8 +300,10 @@ public final class DatabaseManager {
 
     }
 
+    private static final String[] SET_GENERATED_KEY_COLUMNS = { SET_ID_COLUMN }; 
+
     public void createVocabularySet(Consumer<VocabularySet> consumer, User user, String name, Set<Vocabulary> initialContent) {
-        new SetCreator(consumer, user, name, initialContent).run();
+        new Thread(new SetCreator(consumer, user, name, initialContent)).start();
     }
 
     private final class SetCreator implements Runnable {
@@ -310,7 +312,6 @@ public final class DatabaseManager {
         private final Set<Vocabulary> initialContent;
         private final String name;
         private final String command;
-        private final String idQuery;
 
         protected SetCreator(Consumer<VocabularySet> consumer, User user, String name, Set<Vocabulary> initialContent) {
             this.consumer = consumer;
@@ -321,27 +322,18 @@ public final class DatabaseManager {
                 .append(user.name).append("', '")
                 .append(name).append("');")
                 .toString();
-            this.idQuery = new StringBuilder()
-                .append("SELECT ").append(SET_ID_COLUMN)
-                .append(" FROM VocabularySet WHERE ")
-                .append(USER_COLUMN).append(" = '")
-                .append(user.name).append("' AND ")
-                .append(SET_NAME_COLUMN).append(" = '")
-                .append(name).append("';")
-                .toString();
         }
 
         public void run() {
-            Statement statement = null;
+            PreparedStatement statement = null;
             ResultSet result = null;
             try {
                 openConnection();
 
-                statement = connection.createStatement();
-                statement.executeUpdate(command);
-
-                result = statement.executeQuery(idQuery);
-                result.next();
+                statement = connection.prepareStatement(command, SET_GENERATED_KEY_COLUMNS);
+                statement.executeUpdate();
+                result = statement.getGeneratedKeys();
+                if(!result.next()) throw new SQLException("Insert failed - no generated key was returned");
 
                 final VocabularySet createdSet = new VocabularySet(result.getInt(SET_ID_COLUMN), name, false);
                 consumer.accept(createdSet);
