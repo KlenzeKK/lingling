@@ -105,7 +105,6 @@ public final class DatabaseManager {
                 result = statement.executeQuery(VOCABULARY_QUERY);
 
                 final Map<Integer,Vocabulary> vocabulary = this.loadVocabulary(result);
-                vocConsumer.accept(new ArrayList<Vocabulary>(vocabulary.values()));
                 result.close();
                 result = null;
 
@@ -116,6 +115,8 @@ public final class DatabaseManager {
                 result = statement.executeQuery(GIF_QUERY);
                 while (result.next())
                     Main.VOCABULARY.registerGif(result.getString(CHARACTER_COLUMN).charAt(0), result.getBytes(GIF_COLUMN));
+
+                vocConsumer.accept(new ArrayList<Vocabulary>(vocabulary.values()));
             }
             catch (Exception ex) {
                 Main.handleError("Failed to load vocabulary: " + ex, true);
