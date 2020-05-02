@@ -445,23 +445,28 @@ public final class DatabaseManager {
 
     }
 
-    public void updateStats(User user, StatisticKey key, int newValue) {
-        new Thread(new StatisticUpdater(user, key, newValue)).start();
+    public void updateStats(User user, Map<StatisticKey,Integer> newValues) {
+        new Thread(new StatisticUpdater(user, newValues)).start();
     }
 
     private final class StatisticUpdater implements Runnable {
 
         private final String command;
 
-        protected StatisticUpdater(User user, StatisticKey key, int newValue) {
-            this.command = new StringBuilder()
-                .append("UPDATE User SET ")
-                .append(key.databaseColumn)
-                .append(" = ").append(newValue)
-                .append("WHERE").append(USER_COLUMN)
-                .append(" = '").append(user.name)
-                .append("';")
-                .toString();
+        protected StatisticUpdater(User user, Map<StatisticKey,Integer> newValues) {
+            final StringBuilder commandBuilder = new StringBuilder().append("UPDATE User SET ");
+
+            boolean firstColumn = true;
+            for(Map.Entry<StatisticKey,Integer> e: newValues.entrySet()) {
+                if(!firstColumn)
+                    commandBuilder.append(", ");
+                else firstColumn = false;
+
+                commandBuilder.append(e.getKey().databaseColumn).append(" = ").append(e.getValue());
+            }
+            
+            this.command =
+                commandBuilder.append(" WHERE").append(USER_COLUMN).append(" = '").append(user.name).append("';").toString();
         }
 
         public void run() {
