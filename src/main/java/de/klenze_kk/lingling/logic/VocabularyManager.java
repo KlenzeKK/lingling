@@ -2,7 +2,7 @@ package de.klenze_kk.lingling.logic;
 
 import java.util.*;
 import java.util.function.Consumer;
-//import de.klenze_kk.lingling.Main;
+import de.klenze_kk.lingling.Main;
 import java.io.File;
 import java.nio.file.Files;
 
@@ -29,15 +29,8 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
 
             currentPage.add(voc);
         }
-        try {
-            gifs.put('你', Files.readAllBytes(new File("source/gif/ni.gif").toPath()));
-            gifs.put('好', Files.readAllBytes(new File("source/gif/hao.gif").toPath()));
-            gifs.put('蔬', Files.readAllBytes(new File("source/gif/shu.gif").toPath()));
-            gifs.put('菜', Files.readAllBytes(new File("source/gif/cai.gif").toPath()));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        //Main.setJPanel(new de.klenze_kk.lingling.Gui.Hub());
+        
+        Main.setJPanel(new de.klenze_kk.lingling.Gui.Hub());
     }
 
     public synchronized Set<Vocabulary> getVocabulary() {
