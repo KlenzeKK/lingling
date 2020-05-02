@@ -19,7 +19,9 @@ public final class User {
         synchronized (this) {
             stats.put(key, Integer.valueOf(value));
         }
-        Main.getDatabaseManager().updateStats(this, key, value);
+        final Map<StatisticKey,Integer> newValues = new EnumMap<StatisticKey,Integer>(StatisticKey.class);
+        newValues.put(key, value);
+        Main.getDatabaseManager().updateStats(this, newValues);
     }
 
     public void increaseValue(StatisticKey key, int amount) {
@@ -30,6 +32,7 @@ public final class User {
         synchronized (this) {
             stats.putAll(newValues);
         }
+        Main.getDatabaseManager().updateStats(Main.getUser(), newValues);
     }
 
     public synchronized int getValue(StatisticKey key) {
