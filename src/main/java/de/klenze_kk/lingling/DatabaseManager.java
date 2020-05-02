@@ -170,7 +170,7 @@ public final class DatabaseManager {
             Vocabulary currentVoc;
             while (result.next()) {
                 if((set = sets.get(setId = result.getInt("VocabularySet." + SET_ID_COLUMN))) == null) {
-                    templateSet = result.getString(USER_COLUMN).isEmpty();
+                    templateSet = result.getString(USER_COLUMN) == null;
                     setName = result.getString(SET_NAME_COLUMN);
                     if(setName == null) continue;
 
@@ -337,6 +337,7 @@ public final class DatabaseManager {
                 if(!result.next()) throw new SQLException("Insert failed - no generated key was returned");
 
                 final VocabularySet createdSet = new VocabularySet(result.getInt(1), name, false);
+                createdSet.registerVocs(initialContent);
                 consumer.accept(createdSet);
                 new SetModifier(createdSet, initialContent, null).run();
             }
@@ -389,6 +390,8 @@ public final class DatabaseManager {
                         command.setInt(2, voc.id);
                         command.executeUpdate();
                     }
+                    command.close();
+                    command = null;
                 }
 
                 if(remove != null) {
