@@ -4,6 +4,7 @@ import java.sql.*;
 import java.util.*;
 import java.util.function.Consumer;
 
+import de.klenze_kk.lingling.games.RankingTable;
 import de.klenze_kk.lingling.logic.*;
 
 /*
@@ -42,7 +43,12 @@ public final class DatabaseManager {
         this.connection = DriverManager.getConnection(url, userName, password);
     }
 
-    public void closeConnection() {
+    protected synchronized PreparedStatement createStatement(String sqlTemplate) throws SQLException {
+        openConnection();
+        return connection.prepareStatement(sqlTemplate);
+    }
+
+    public synchronized void closeConnection() {
         if(connection == null) return;
 
         try {
@@ -51,7 +57,7 @@ public final class DatabaseManager {
             connection = null;
         }
         catch (Exception ex) {
-            ex.printStackTrace();
+            Main.handleError("Failed to close SQL connection: " + ex, false);
         }
     }
 
@@ -66,53 +72,46 @@ public final class DatabaseManager {
     private static final String TRANSLATION_COLUMN = "Translation";
     private static final String TERM_COLUMN = "Term";
     private static final String PAGE_NUMBER_COLUMN = "Page_Number";
-    private static final String GIF_QUERY = "SELECT * FROM Gifs";
-    private static final String VOCABULARY_QUERY = 
-        new StringBuilder("SELECT * FROM Vocabulary ORDER BY ").append(TRANSLATION_COLUMN).append(";").toString();
+    private static final String VOCABULARY_QUERY = "SELECT * FROM Vocabulary ORDER BY Translation;";
+
+    private static final String USER_COLUMN = "Username";
+    private static final String PASSWORD_COLUMN = "Password";
 
     private static final String SET_ID_COLUMN = "SetID";
-    private static final String SET_NAME_COLUMN = "Name";
+    private static final String SET_NAME_COLUMN = "Name";    
+    private static final String SET_QUERY = "SELECT * FROM VocabularySet, SetContents WHERE VocabularySet.SetID = SetContents.SetID AND (Username IS NULL OR Username=?);";
 
+    private static final String GIF_QUERY = "SELECT * FROM Gifs";
     private static final String CHARACTER_COLUMN = "Character";
     private static final String GIF_COLUMN = "Gif";
 
     private final class VocabularyLoader implements Runnable {
 
+        private final String userName;
         private final Consumer<List<Vocabulary>> vocConsumer;
         private final Consumer<Set<VocabularySet>> setConsumer;
-        private final String vocabularySetQuery;
 
         protected VocabularyLoader(User user, Consumer<List<Vocabulary>> vocConsumer, Consumer<Set<VocabularySet>> setConsumer) {
+            this.userName = user.name;
             this.vocConsumer = vocConsumer;
             this.setConsumer = setConsumer;
-            this.vocabularySetQuery = new StringBuilder()
-                .append("SELECT * FROM VocabularySet, SetContents WHERE VocabularySet.")
-                .append(SET_ID_COLUMN).append(" = SetContents.")
-                .append(SET_ID_COLUMN).append(" AND (")
-                .append(USER_COLUMN).append(" IS NULL OR ")
-                .append(USER_COLUMN).append(" = '")
-                .append(user.name).append("');")
-                .toString();
         }
 
         public void run() {
-            Statement statement = null;
+            PreparedStatement statement = null;
             ResultSet result = null;
             try {
-                openConnection();
-
-                statement = connection.createStatement();
-                result = statement.executeQuery(VOCABULARY_QUERY);
+                result = (statement = createStatement(VOCABULARY_QUERY)).executeQuery();
 
                 final Map<Integer,Vocabulary> vocabulary = this.loadVocabulary(result);
-                result.close();
-                result = null;
+                closeResources(statement, result);
 
-                setConsumer.accept(this.loadSets(result = statement.executeQuery(vocabularySetQuery), vocabulary));
-                result.close();
-                result = null;
+                statement = createStatement(SET_QUERY);
+                statement.setString(1, userName);
+                setConsumer.accept(this.loadSets(result = statement.executeQuery(), vocabulary));
+                closeResources(statement, result);
 
-                result = statement.executeQuery(GIF_QUERY);
+                result = (statement = createStatement(GIF_QUERY)).executeQuery();
                 while (result.next())
                     Main.VOCABULARY.registerGif(result.getString(CHARACTER_COLUMN).charAt(0), result.getBytes(GIF_COLUMN));
 
@@ -187,41 +186,32 @@ public final class DatabaseManager {
         }
 
     }
- 
-    private static final String USER_COLUMN = "Username";
-    private static final String PASSWORD_COLUMN = "Password";
 
     public void performLogin(Consumer<User> consumer, String userName, String password) {
       new Thread(new LoginTask(consumer, userName, password)).start();
     }
+
+    private static final String LOGIN_QUERY = "SELECT Password FROM User WHERE Username=?;";
 
     private final class LoginTask implements Runnable {
 
         private final Consumer<User> consumer;
         private final String name;
         private final String password;
-        private final String query;
 
         protected LoginTask(Consumer<User> consumer, String name, String password) {
             this.consumer = consumer;
             this.name = name;
             this.password = password;
-            this.query = new StringBuilder()
-                .append("SELECT * FROM User WHERE ")
-                .append(USER_COLUMN)
-                .append(" = '").append(name)
-                .append("';").toString();
         }
 
         public void run() {
             final User user;
-            Statement statement = null;
+            PreparedStatement statement = null;
             ResultSet data = null;
             try {
-                openConnection();
-
-                data = (statement = connection.createStatement()).executeQuery(query);
-                if(data.next()) {
+                (statement = createStatement(LOGIN_QUERY)).setString(1, name);
+                if((data = statement.executeQuery()).next()) {
                     if(password.equals(data.getString(PASSWORD_COLUMN))) {
 
                         final EnumMap<StatisticKey,Integer> stats = new EnumMap<StatisticKey,Integer>(StatisticKey.class);
@@ -247,6 +237,9 @@ public final class DatabaseManager {
 
     }
 
+    private static final String USERNAME_COUNT_QUERY = "SELECT COUNT(*) FROM User WHERE Username=?;";
+    private static final String REGISTRATION_COMMAND = "INSERT INTO User (Username, Password) VALUES (?, ?);";
+
     public void registerUser(Consumer<User> consumer, String userName, String password) {
         new RegistrationTask(consumer, userName, password).run();
     }
@@ -255,52 +248,56 @@ public final class DatabaseManager {
 
         private final Consumer<User> consumer;
         private final String userName;
-        private final String query;
-        private final String updateCommand;
+        private final String password;
 
         protected RegistrationTask(Consumer<User> consumer, String userName, String password) {
             this.consumer = consumer;
             this.userName = userName;
-            this.query = new StringBuilder()
-                .append("SELECT COUNT(*) AS User_Count FROM User WHERE ")
-                .append(USER_COLUMN).append(" = '")
-                .append(userName).append("';")
-                .toString();
-            this.updateCommand = new StringBuilder()
-                .append("INSERT INTO User (")
-                .append(USER_COLUMN).append(", ")
-                .append(PASSWORD_COLUMN)
-                .append(") VALUES ('")
-                .append(userName).append("', '")
-                .append(password).append("');")
-                .toString();
+            this.password = password;
         }
 
         public void run() { 
-            Statement statement = null;
+            final int userCount;
+            PreparedStatement statement = null;
             ResultSet result = null;
             try {  
-                openConnection();
-                statement = connection.createStatement();
-                result = statement.executeQuery(query);
-                result.next();
+                (statement = createStatement(USERNAME_COUNT_QUERY)).setString(1, userName);
+                (result = statement.executeQuery()).next();
+                userCount = result.getInt(1);
+            }
+            catch (Exception ex) {
+                Main.handleError("Failed to check availability of username: " + ex, true);
+                return;
+            }
+            finally {
+                closeResources(statement, result);
+            }
 
-                if(result.getInt("User_Count") <= 0) {
-                    consumer.accept(new User(userName, new EnumMap<StatisticKey,Integer>(StatisticKey.class)));
-                    statement.executeUpdate(updateCommand);
-                }
-                else consumer.accept(null);
+            if(userCount > 0) {
+                consumer.accept(null);
+                return;
+            }
+
+            statement = null;
+            result = null;
+
+            try {
+                statement = createStatement(REGISTRATION_COMMAND);
+                statement.setString(1, userName);
+                statement.setString(2, password);
+                statement.executeUpdate();
             }
             catch (Exception ex) {
                 Main.handleError("Failed to register user: " + ex, true);
             }
             finally {
-                closeResources(statement, result);
+                closeResources(statement, null);
             }
         }
 
     }
 
+    private static final String SET_CREATION_COMMAND = "INSERT INTO VocabularySet (Username, Name) VALUES (?, ?);";
     private static final String[] SET_GENERATED_KEY_COLUMNS = { SET_ID_COLUMN }; 
 
     public void createVocabularySet(Consumer<VocabularySet> consumer, User user, String name, Set<Vocabulary> initialContent) {
@@ -312,53 +309,50 @@ public final class DatabaseManager {
         private final Consumer<VocabularySet> consumer;
         private final Set<Vocabulary> initialContent;
         private final String name;
-        private final String command;
+        private final String userName;
 
         protected SetCreator(Consumer<VocabularySet> consumer, User user, String name, Set<Vocabulary> initialContent) {
             this.consumer = consumer;
+            this.userName = user.name;
             this.name = name;
             this.initialContent = initialContent;
-            this.command = new StringBuilder()
-                .append("INSERT INTO VocabularySet VALUES (DEFAULT, '")
-                .append(user.name).append("', '")
-                .append(name).append("');")
-                .toString();
         }
 
         public void run() {
+            final VocabularySet createdSet;
             PreparedStatement statement = null;
             ResultSet result = null;
             try {
                 openConnection();
-
-                statement = connection.prepareStatement(command, SET_GENERATED_KEY_COLUMNS);
+                synchronized (this) {
+                    statement = connection.prepareStatement(SET_CREATION_COMMAND, SET_GENERATED_KEY_COLUMNS);
+                }
+                
+                statement.setString(1, userName);
+                statement.setString(2, name);
                 statement.executeUpdate();
                 result = statement.getGeneratedKeys();
                 if(!result.next()) throw new SQLException("Insert failed - no generated key was returned");
 
-                final VocabularySet createdSet = new VocabularySet(result.getInt(1), name, false);
-                createdSet.registerVocs(initialContent);
-                consumer.accept(createdSet);
-                new SetModifier(createdSet, initialContent, null).run();
+                createdSet = new VocabularySet(result.getInt(1), name, false);
             }
             catch (Exception ex) {
                 Main.handleError("Failed to create vocabulary set: " + ex, false);
+                return;
             }
             finally {
                 closeResources(statement, result);
             }
+
+            createdSet.registerVocs(initialContent);
+            consumer.accept(createdSet);
+            new SetModifier(createdSet, initialContent, null).run();
         }
 
     }
 
     private static final String SET_ADD_VOC_COMMAND = "INSERT INTO SetContents VALUES (?, ?);";
-    private static final String SET_REMOVE_VOC_COMMAND = 
-        new StringBuilder("DELETE FROM SetContents WHERE ")
-            .append(SET_ID_COLUMN)
-            .append("=? AND ")
-            .append(VOC_ID_COLUMN)
-            .append("=?;")
-            .toString();
+    private static final String SET_REMOVE_VOC_COMMAND = "DELETE FROM SetContents WHERE SetID=? AND VocID=?;";
 
     public void modifyVocabularySet(VocabularySet set, Set<Vocabulary> add, Set<Vocabulary> remove) {
         new Thread(new SetModifier(set, add, remove)).start();
@@ -377,25 +371,20 @@ public final class DatabaseManager {
         }
 
         public void run() {
-            Statement statement = null;
-            ResultSet result = null;
+            PreparedStatement command = null;
             try {
-                openConnection();
-                
-                PreparedStatement command;
                 if(add != null) {
-                    command = connection.prepareStatement(SET_ADD_VOC_COMMAND);
+                    command = createStatement(SET_ADD_VOC_COMMAND);
                     command.setInt(1, setId);
                     for(Vocabulary voc: add) {
                         command.setInt(2, voc.id);
                         command.executeUpdate();
                     }
-                    command.close();
-                    command = null;
+                    closeResources(command, null);
                 }
 
                 if(remove != null) {
-                    command = connection.prepareStatement(SET_REMOVE_VOC_COMMAND);
+                    command = createStatement(SET_REMOVE_VOC_COMMAND);
                     command.setInt(1, setId);
                     for(Vocabulary voc: remove) {
                         command.setInt(2, voc.id);
@@ -407,11 +396,13 @@ public final class DatabaseManager {
                 Main.handleError("Failed to update vocabulary set: " + ex, false);
             }
             finally {
-                closeResources(statement, result);
+                closeResources(command, null);
             }
         }
 
     }
+
+    private static final String SET_DELETION_COMMAND = "DELETE FROM VocabularySet WHERE SetID=?;";
 
     public void deleteVocabularySet(VocabularySet set) {
         new Thread(new SetDeletionTask(set)).start();
@@ -419,21 +410,17 @@ public final class DatabaseManager {
 
     private final class SetDeletionTask implements Runnable {
 
-        private final String command;
+        private final int setId;
 
         protected SetDeletionTask(VocabularySet set) {
-            this.command = new StringBuilder()
-                .append("DELETE FROM VocabularySet WHERE ")
-                .append(SET_ID_COLUMN).append(" = ")
-                .append(set.id).append(";")
-                .toString();
+            this.setId = set.id;
         }
 
         public void run() {
-            Statement statement = null;
+            PreparedStatement statement = null;
             try {
-                openConnection();
-                (statement = connection.createStatement()).executeUpdate(command);
+                (statement = createStatement(SET_DELETION_COMMAND)).setInt(1, setId);
+                statement.executeUpdate();
             }
             catch (Exception ex) {
                 Main.handleError("Failed to delete vocabulary set: " + ex, false);
@@ -451,77 +438,69 @@ public final class DatabaseManager {
 
     private final class StatisticUpdater implements Runnable {
 
-        private final String command;
+        private final String userName;
+        private final Map<StatisticKey,Integer> newValues;
 
         protected StatisticUpdater(User user, Map<StatisticKey,Integer> newValues) {
-            final StringBuilder commandBuilder = new StringBuilder().append("UPDATE User SET ");
-
-            boolean firstColumn = true;
-            for(Map.Entry<StatisticKey,Integer> e: newValues.entrySet()) {
-                if(!firstColumn)
-                    commandBuilder.append(", ");
-                else firstColumn = false;
-
-                commandBuilder.append(e.getKey().databaseColumn).append(" = ").append(e.getValue());
-            }
-            
-            this.command =
-                commandBuilder.append(" WHERE").append(USER_COLUMN).append(" = '").append(user.name).append("';").toString();
+            this.userName = user.name;
+            this.newValues = newValues;
         }
 
         public void run() {
-            Statement statement = null;
+            PreparedStatement current = null;
+            String currentCommand;
             try {
-                openConnection();
-                (statement = connection.createStatement()).executeUpdate(command);
+                for(Map.Entry<StatisticKey,Integer> e: newValues.entrySet()) {
+                    currentCommand = "UPDATE User SET " + e.getKey().databaseColumn + "=? WHERE Username=?;";
+                    current = createStatement(currentCommand);
+                    current.setInt(1, e.getValue());
+                    current.setString(2, userName);
+                    current.executeUpdate();
+                    closeResources(current, null);
+                    current = null;
+                }
             }
             catch (Exception ex) {
                 Main.handleError("Failed to store statistics: " + ex, false);
             }
             finally {
-                closeResources(statement, null);
+                closeResources(current, null);
             }
         }
 
     }
 
-    public void createRanking(Consumer<LinkedHashMap<String,Integer>> consumer, StatisticKey key) {
-       new Thread(new RankingCreator(consumer, key)).start();
+    public void createRanking(Consumer<RankingTable[]> consumer, User user, StatisticKey... keys) {
+       new Thread(new RankingCreator(consumer, user, keys)).start();
     }
 
     private final class RankingCreator implements Runnable {
 
-        private final Consumer<LinkedHashMap<String,Integer>> consumer;
-        private final StatisticKey key;
-        private final String query;
+        private final Consumer<RankingTable[]> consumer;
+        private final User user;
+        private final StatisticKey[] keys;
 
-        protected RankingCreator(Consumer<LinkedHashMap<String,Integer>> consumer, StatisticKey key) {
+        protected RankingCreator(Consumer<RankingTable[]> consumer, User user, StatisticKey[] keys) {
             this.consumer = consumer;
-            this.key = key;
-            this.query = new StringBuilder()
-                .append("SELECT ")
-                .append(USER_COLUMN).append(", ")
-                .append(key.databaseColumn)
-                .append(" FROM User ORDER BY ")
-                .append(key.databaseColumn)
-                .append(key.theHigherTheBetter ? " DESC;" : " ASC;")
-                .toString();
+            this.user = user;
+            this.keys = keys;
         }
 
         public void run() {
-            final LinkedHashMap<String,Integer> ranking = new LinkedHashMap<String,Integer>();
-            Statement statement = null;
-            ResultSet stats = null;
+            final RankingTable[] tables = new RankingTable[keys.length];
+            PreparedStatement statement = null;
+            ResultSet result = null;
+            RankingTable.RankingBuilder current;
             try {
-                openConnection();
-
-                stats = (statement = connection.createStatement()).executeQuery(query);
-                String userName;
-                while (stats.next()) {
-                    userName = stats.getString(USER_COLUMN);
-                    if(userName == null) continue;
-
-                    ranking.put(userName, stats.getInt(key.databaseColumn));
+                for(int i = 0; i < keys.length; i++) {
+                    current = new RankingTable.RankingBuilder();
+                    statement = createStatement("SELECT * FROM (SELECT @rank:=@rank+1 AS Rank, Username, " + keys[i].databaseColumn + " AS Value FROM User, (SELECT @rank:=0) AS n ORDER BY Value DESC) AS r WHERE Rank<=? OR Username=?");
+                    statement.setInt(1, 10);
+                    statement.setString(2, user.name);
+                    while ((result = statement.executeQuery()).next())
+                        current.addUser(result.getInt("Rank"), result.getString(USER_COLUMN), result.getInt("Value"));
+                    tables[i] = current.build(keys[i]);
+                    closeResources(statement, result);
                 }
             }
             catch (Exception ex) {
@@ -530,10 +509,10 @@ public final class DatabaseManager {
                 return;
             }
             finally {
-                closeResources(statement, stats);
+                closeResources(statement, result);
             }
 
-            consumer.accept(ranking);
+            consumer.accept(tables);
         }
 
     }
@@ -541,13 +520,14 @@ public final class DatabaseManager {
     private static void closeResources(Statement statement, ResultSet result) {
         if(result != null) {
             try {
-                result.close();
+                if(!result.isClosed())
+                    result.close();
             }
             catch (Exception ex) {}
         }
         if(statement != null) {
             try {
-                if(statement != null)
+                if(!statement.isClosed())
                     statement.close();
             }
             catch (Exception ex) {}
