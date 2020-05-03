@@ -2,20 +2,16 @@ package de.klenze_kk.lingling.logic;
 
 public enum StatisticKey {
 
-    ANSWERED_QUESTIONS, 
-    MAX_QUESTIONING_STREAK,
-    TIMED_QUESTIONING_HIGHSCORE;
+    TIMED_QUESTIONING_HIGHSCORE("Highscore"),
+    ANSWERED_QUESTIONS("Korrekte Antworten"), 
+    MAX_QUESTIONING_STREAK("Höchste Antwort-Streak");
 
     public final String databaseColumn;
-    public final boolean theHigherTheBetter;
+    public final String displayName;
 
-    private StatisticKey() {
-        this(true);
-    }
-
-    private StatisticKey(boolean theHigherTheBetter) {
+    private StatisticKey(String displayName) {
+        this.displayName = displayName;
         this.databaseColumn = this.toString().toLowerCase();
-        this.theHigherTheBetter = theHigherTheBetter;
     }
 
 }
