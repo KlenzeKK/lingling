@@ -2,9 +2,7 @@ package de.klenze_kk.lingling.logic;
 
 import java.util.*;
 import java.util.function.Consumer;
-import de.klenze_kk.lingling.Main;
-import java.io.File;
-import java.nio.file.Files;
+// import de.klenze_kk.lingling.Main;
 
 public final class VocabularyManager implements Consumer<List<Vocabulary>> {
 
@@ -30,7 +28,7 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
             currentPage.add(voc);
         }
         
-        Main.setJPanel(new de.klenze_kk.lingling.Gui.Hub());
+        // Main.setJPanel(new de.klenze_kk.lingling.Gui.Hub());
     }
 
     public synchronized Set<Vocabulary> getVocabulary() {
@@ -119,5 +117,45 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
             gifs.put(c, bytes);
         }
     }
+
+    private static final char[][] TONES = 
+    {
+        { 'ā', 'á', 'ǎ', 'à' },
+        { 'ē', 'é', 'ě', 'è' },
+        { 'ī', 'í', 'ǐ', 'ì' },
+        { 'ō', 'ó', 'ǒ', 'ò' },
+        { 'ū', 'ú', 'ǔ', 'ù' },
+        { 'ǖ', 'ǘ', 'ǚ', 'ǜ' }
+    };
     
+    public static boolean hasTones(Vocabulary voc) {
+        return !voc.chinese.equals(voc.rawPinyin);
+    }
+
+    public static LinkedHashMap<Integer,char[]> findTones(Vocabulary voc) {
+        final LinkedHashMap<Integer,char[]> tones = new LinkedHashMap<Integer,char[]>();
+        final char[] pinyinChars = voc.pinyin.toCharArray();
+        boolean foundChar = false;
+        for(int i = 0; i < pinyinChars.length; i++) {
+            if(pinyinChars[i] < '\u0061' && pinyinChars[i] > '\u007A') continue;
+
+            for(char[] tonesForOneLetter: TONES) {
+                for(char toneChar: tonesForOneLetter) {
+                    if(pinyinChars[i] == toneChar) {
+                        tones.put(i, tonesForOneLetter);
+                        foundChar = true;
+                        break;
+                    }
+                }
+
+                if(foundChar) {
+                    foundChar = false;
+                    break;
+                }
+            }
+        }
+
+        return tones;
+    }
+
 }
