@@ -72,16 +72,16 @@ public final class DatabaseManager {
     private static final String TRANSLATION_COLUMN = "Translation";
     private static final String TERM_COLUMN = "Term";
     private static final String PAGE_NUMBER_COLUMN = "Page_Number";
-    private static final String VOCABULARY_QUERY = "SELECT * FROM Vocabulary ORDER BY Translation;";
+    private static final String VOCABULARY_QUERY = "SELECT * FROM vocabulary ORDER BY Translation;";
 
     private static final String USER_COLUMN = "Username";
     private static final String PASSWORD_COLUMN = "Password";
 
     private static final String SET_ID_COLUMN = "SetID";
     private static final String SET_NAME_COLUMN = "Name";    
-    private static final String SET_QUERY = "SELECT * FROM VocabularySet, SetContents WHERE VocabularySet.SetID = SetContents.SetID AND (Username IS NULL OR Username=?);";
+    private static final String SET_QUERY = "SELECT * FROM VocabularySet, setcontents WHERE VocabularySet.SetID = setcontents.SetID AND (Username IS NULL OR Username=?);";
 
-    private static final String GIF_QUERY = "SELECT * FROM Gifs";
+    private static final String GIF_QUERY = "SELECT * FROM gifs";
     private static final String CHARACTER_COLUMN = "Character";
     private static final String GIF_COLUMN = "Gif";
 
@@ -191,7 +191,7 @@ public final class DatabaseManager {
       new Thread(new LoginTask(consumer, userName, password)).start();
     }
 
-    private static final String LOGIN_QUERY = "SELECT Password FROM User WHERE Username=?;";
+    private static final String LOGIN_QUERY = "SELECT * FROM user WHERE Username=?;";
 
     private final class LoginTask implements Runnable {
 
@@ -237,8 +237,8 @@ public final class DatabaseManager {
 
     }
 
-    private static final String USERNAME_COUNT_QUERY = "SELECT COUNT(*) FROM User WHERE Username=?;";
-    private static final String REGISTRATION_COMMAND = "INSERT INTO User (Username, Password) VALUES (?, ?);";
+    private static final String USERNAME_COUNT_QUERY = "SELECT COUNT(*) FROM user WHERE Username=?;";
+    private static final String REGISTRATION_COMMAND = "INSERT INTO user (Username, Password) VALUES (?, ?);";
 
     public void registerUser(Consumer<User> consumer, String userName, String password) {
         new RegistrationTask(consumer, userName, password).run();
@@ -297,7 +297,7 @@ public final class DatabaseManager {
 
     }
 
-    private static final String SET_CREATION_COMMAND = "INSERT INTO VocabularySet (Username, Name) VALUES (?, ?);";
+    private static final String SET_CREATION_COMMAND = "INSERT INTO vocabularyset (Username, Name) VALUES (?, ?);";
     private static final String[] SET_GENERATED_KEY_COLUMNS = { SET_ID_COLUMN }; 
 
     public void createVocabularySet(Consumer<VocabularySet> consumer, User user, String name, Set<Vocabulary> initialContent) {
@@ -351,8 +351,8 @@ public final class DatabaseManager {
 
     }
 
-    private static final String SET_ADD_VOC_COMMAND = "INSERT INTO SetContents VALUES (?, ?);";
-    private static final String SET_REMOVE_VOC_COMMAND = "DELETE FROM SetContents WHERE SetID=? AND VocID=?;";
+    private static final String SET_ADD_VOC_COMMAND = "INSERT INTO setcontents VALUES (?, ?);";
+    private static final String SET_REMOVE_VOC_COMMAND = "DELETE FROM setcontents WHERE SetID=? AND VocID=?;";
 
     public void modifyVocabularySet(VocabularySet set, Set<Vocabulary> add, Set<Vocabulary> remove) {
         new Thread(new SetModifier(set, add, remove)).start();
@@ -402,7 +402,7 @@ public final class DatabaseManager {
 
     }
 
-    private static final String SET_DELETION_COMMAND = "DELETE FROM VocabularySet WHERE SetID=?;";
+    private static final String SET_DELETION_COMMAND = "DELETE FROM vocabularyset WHERE SetID=?;";
 
     public void deleteVocabularySet(VocabularySet set) {
         new Thread(new SetDeletionTask(set)).start();
@@ -451,7 +451,7 @@ public final class DatabaseManager {
             String currentCommand;
             try {
                 for(Map.Entry<StatisticKey,Integer> e: newValues.entrySet()) {
-                    currentCommand = "UPDATE User SET " + e.getKey().databaseColumn + "=? WHERE Username=?;";
+                    currentCommand = "UPDATE user SET " + e.getKey().databaseColumn + "=? WHERE Username=?;";
                     current = createStatement(currentCommand);
                     current.setInt(1, e.getValue());
                     current.setString(2, userName);
@@ -497,7 +497,8 @@ public final class DatabaseManager {
                     statement = createStatement("SELECT * FROM (SELECT @rank:=@rank+1 AS Rank, Username, " + keys[i].databaseColumn + " AS Value FROM User, (SELECT @rank:=0) AS n ORDER BY Value DESC) AS r WHERE Rank<=? OR Username=?");
                     statement.setInt(1, 10);
                     statement.setString(2, user.name);
-                    while ((result = statement.executeQuery()).next())
+                    result = statement.executeQuery();
+                    while (result.next())
                         current.addUser(result.getInt("Rank"), result.getString(USER_COLUMN), result.getInt("Value"));
                     tables[i] = current.build(keys[i]);
                     closeResources(statement, result);
