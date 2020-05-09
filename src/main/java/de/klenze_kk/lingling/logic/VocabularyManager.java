@@ -1,161 +1,598 @@
-package de.klenze_kk.lingling.logic;
+package de.klenze_kk.lingling;
 
+import java.sql.*;
 import java.util.*;
 import java.util.function.Consumer;
-import de.klenze_kk.lingling.Main;
 
-public final class VocabularyManager implements Consumer<List<Vocabulary>> {
+import de.klenze_kk.lingling.games.CorrectnessRate;
+import de.klenze_kk.lingling.games.RankingTable;
+import de.klenze_kk.lingling.logic.*;
 
-    protected final Set<VocabularySet> sets = new HashSet<VocabularySet>();
-    private final Set<Vocabulary> vocabulary = new LinkedHashSet<Vocabulary>();
-    private final Map<Short,Set<Vocabulary>> pagesCache = new LinkedHashMap<Short,Set<Vocabulary>>();
-    private final Map<Character,byte[]> gifs = new HashMap<Character,byte[]>();
+/*
+<dependency>
+    <groupId>mysql</groupId>
+    <artifactId>mysql-connector-java</artifactId>
+    <version>5.1.36</version>
+</dependency>
+*/
 
-    public synchronized void accept(List<Vocabulary> vocs) {
-        vocabulary.clear();
-        pagesCache.clear();
+public final class DatabaseManager {
 
-        vocabulary.addAll(vocs);
+    private static final String DRIVER_CLASS = "com.mysql.cj.jdbc.Driver";
+    private static final String URL_PREFIX = "jdbc:mysql://";
 
-        Set<Vocabulary> currentPage;
-        for(Vocabulary voc: vocs) {
-            currentPage = pagesCache.get(voc.pageNumber);
-            if(currentPage == null) {
-                currentPage = new HashSet<Vocabulary>();
-                pagesCache.put(voc.pageNumber, currentPage);
+    private final Properties props = new Properties();
+    private final String url;
+
+    protected Connection connection;
+
+    public DatabaseManager(String host, short port, String database, String userName, String password) {
+        this.url = new StringBuilder(URL_PREFIX).append(host).append(':').append(port).append('/').append(database).toString();
+
+        props.setProperty("user", userName);
+        props.setProperty("password", password);
+        props.setProperty("dataSource.cachePrepStmts", "true");
+        props.setProperty("dataSource.prepStmtCacheSize", "15");
+        props.setProperty("dataSource.prepStmtCacheSqlLimit", "2048");
+        props.setProperty("dataSource.useServerPrepStmts", "true");
+    }
+
+    protected synchronized void openConnection() throws SQLException, ClassNotFoundException {
+        if(connection != null && !connection.isClosed()) return;
+
+        Class.forName(DRIVER_CLASS);
+        this.connection = DriverManager.getConnection(url, props);
+    }
+
+    protected synchronized PreparedStatement createStatement(String sqlTemplate) throws SQLException, ClassNotFoundException {
+        this.openConnection();
+        return connection.prepareStatement(sqlTemplate);
+    }
+
+    protected void closeResources(PreparedStatement statement, ResultSet result) {
+        if(result != null) {
+            try {
+                if(!result.isClosed())
+                    result.close();
             }
-
-            currentPage.add(voc);
+            catch (Exception ex) {}
         }
-        
-         Main.setJPanel(new de.klenze_kk.lingling.Gui.Hub());
-    }
-
-    public synchronized Set<Vocabulary> getVocabulary() {
-        return new LinkedHashSet<Vocabulary>(vocabulary);
-    }
-
-    public synchronized Set<Vocabulary> performQuery(String query, Set<Short> pageNumbers, Set<String> terms) {
-        final Set<Vocabulary> queryResult = new LinkedHashSet<Vocabulary>();
-
-        query = query.toLowerCase();
-
-        for(Short s: pageNumbers != null ? pageNumbers : pagesCache.keySet()) {
-            for(Vocabulary voc: pagesCache.get(s)) {
-                if(terms != null && !terms.contains(voc.term)) continue;
-                if(!voc.chinese.contains(query) &&
-                   !voc.rawPinyin.toLowerCase().contains(query) &&
-                   !voc.translation.toLowerCase().contains(query)) continue;
-
-                queryResult.add(voc);
-            }
-        }
-
-        return queryResult;
-    }
-
-    public synchronized boolean correctTranslation(String chinese, String german) {
-        for(Vocabulary voc: vocabulary) {
-            if(voc.chinese.equals(chinese) && voc.translation.equalsIgnoreCase(german))
-                return true;
-        }
-
-        return false;
-    }
-
-    public Set<VocabularySet> getVocabularySets() {
-        synchronized (sets) {
-            return new HashSet<VocabularySet>(sets);
-        }
-    }
-
-    public void registerSet(VocabularySet set) {
-        synchronized (sets) {
-            sets.add(set);
-        }
-    }
-
-    public boolean setNameAvailable(String name) {
-        synchronized (sets) {
-            for(VocabularySet set: sets) {
-                if(set.name.equals(name))
-                    return false;
-            }
-        }
-
-        return true;
-    }
-
-    public void logOut() {
-        synchronized (this) {
-            vocabulary.clear();
-            pagesCache.clear();
-        }   
-        synchronized (sets) {
-            sets.clear();
-        }
-    }
-    
-    public void deleteSet(VocabularySet v) {
-        synchronized (sets) {
-            sets.remove(v);
-        }
-    }
-    
-    public byte[] getGif(char c) {
-        synchronized (gifs) {
-            byte[] gif = gifs.get(c);
-            if(gif == null)
-                gifs.put(c, gif = new byte[0]);
-                
-            return gif;
-        }
-    }
-
-    public void registerGif(char c, byte[] bytes) {
-        synchronized (gifs) {
-            gifs.put(c, bytes);
-        }
-    }
-
-    private static final char[][] TONES = 
-    {
-        { 'ā', 'á', 'ǎ', 'à' },
-        { 'ē', 'é', 'ě', 'è' },
-        { 'ī', 'í', 'ǐ', 'ì' },
-        { 'ō', 'ó', 'ǒ', 'ò' },
-        { 'ū', 'ú', 'ǔ', 'ù' },
-        { 'ǖ', 'ǘ', 'ǚ', 'ǜ' }
-    };
-    
-    public static boolean hasTones(Vocabulary voc) {
-        return !voc.chinese.equals(voc.rawPinyin);
-    }
-
-    public static LinkedHashMap<Integer,char[]> findTones(Vocabulary voc) {
-        final LinkedHashMap<Integer,char[]> tones = new LinkedHashMap<Integer,char[]>();
-        final char[] pinyinChars = voc.pinyin.toCharArray();
-        boolean foundChar = false;
-        for(int i = 0; i < pinyinChars.length; i++) {
-            if(pinyinChars[i] < '\u0061' && pinyinChars[i] > '\u007A') continue;
-
-            for(char[] tonesForOneLetter: TONES) {
-                for(char toneChar: tonesForOneLetter) {
-                    if(pinyinChars[i] == toneChar) {
-                        tones.put(i, tonesForOneLetter);
-                        foundChar = true;
-                        break;
+        if(statement != null) {
+            try {
+                if(!statement.isClosed()) {
+                    synchronized (this) {
+                        statement.close();
                     }
                 }
+            }
+            catch (Exception ex) {}
+        }
+    }
 
-                if(foundChar) {
-                    foundChar = false;
-                    break;
-                }
+    public void loadVocabulary(User u, Consumer<List<Vocabulary>> vocConsumer, Consumer<Set<VocabularySet>> setConsumer) {
+       new Thread(new VocabularyLoader(u, vocConsumer, setConsumer)).start();
+    }
+
+    private static final String VOC_ID_COLUMN = "VocID";
+    private static final String CHINESE_COLUMN = "Chinese";
+    private static final String PINYIN_COLUMN = "Pinyin";
+    private static final String RAW_PINYIN_COLUMN = "Raw_Pinyin";
+    private static final String TRANSLATION_COLUMN = "Translation";
+    private static final String TERM_COLUMN = "Term";
+    private static final String PAGE_NUMBER_COLUMN = "Page_Number";
+    private static final String VOCABULARY_QUERY = "SELECT * FROM vocabulary ORDER BY Translation;";
+
+    private static final String USER_COLUMN = "Username";
+    private static final String PASSWORD_COLUMN = "Password";
+
+    private static final String SET_ID_COLUMN = "SetID";
+    private static final String SET_NAME_COLUMN = "Name";    
+    private static final String SET_QUERY = "SELECT * FROM VocabularySet, setcontents WHERE VocabularySet.SetID = setcontents.SetID AND (Username IS NULL OR Username=?);";
+
+    private static final String GIF_QUERY = "SELECT * FROM gifs";
+    private static final String CHARACTER_COLUMN = "Character";
+    private static final String GIF_COLUMN = "Gif";
+
+    private final class VocabularyLoader implements Runnable {
+
+        private final String userName;
+        private final Consumer<List<Vocabulary>> vocConsumer;
+        private final Consumer<Set<VocabularySet>> setConsumer;
+
+        protected VocabularyLoader(User user, Consumer<List<Vocabulary>> vocConsumer, Consumer<Set<VocabularySet>> setConsumer) {
+            this.userName = user.name;
+            this.vocConsumer = vocConsumer;
+            this.setConsumer = setConsumer;
+        }
+
+        public void run() {
+            PreparedStatement statement = null;
+            ResultSet result = null;
+            try {
+                result = (statement = createStatement(VOCABULARY_QUERY)).executeQuery();
+
+                final Map<Integer,Vocabulary> vocabulary = this.loadVocabulary(result);
+                closeResources(statement, result);
+
+                statement = createStatement(SET_QUERY);
+                statement.setString(1, userName);
+                setConsumer.accept(this.loadSets(result = statement.executeQuery(), vocabulary));
+                closeResources(statement, result);
+
+                result = (statement = createStatement(GIF_QUERY)).executeQuery();
+                while (result.next())
+                    Main.VOCABULARY.registerGif(result.getString(CHARACTER_COLUMN).charAt(0), result.getBytes(GIF_COLUMN));
+
+                vocConsumer.accept(new ArrayList<Vocabulary>(vocabulary.values()));
+            }
+            catch (Exception ex) {
+                Main.handleError("Failed to load vocabulary: " + ex, true);
+                ex.printStackTrace();
+                return;
+            }
+            finally { 
+                closeResources(statement, result);
             }
         }
 
-        return tones;
+        private Map<Integer,Vocabulary> loadVocabulary(ResultSet result) throws SQLException {
+            final Map<Integer,Vocabulary> vocabulary = new LinkedHashMap<Integer,Vocabulary>();
+
+            int id;
+            short pageNumber;
+            String chinese, translation, pinyin, rawPinyin, term;
+            while (result.next()) {
+                id = result.getInt(VOC_ID_COLUMN);
+
+                chinese = result.getString(CHINESE_COLUMN);
+                if(chinese == null) continue;
+
+                translation = result.getString(TRANSLATION_COLUMN);
+                if(translation == null) continue;
+
+                pinyin = result.getString(PINYIN_COLUMN);
+                if(pinyin == null) pinyin = "";
+
+                rawPinyin = result.getString(RAW_PINYIN_COLUMN);
+                if(rawPinyin == null) rawPinyin = pinyin;
+
+                term = result.getString(TERM_COLUMN);
+                if(term == null) term = "";
+
+                pageNumber = result.getShort(PAGE_NUMBER_COLUMN);
+
+                vocabulary.put(id, new Vocabulary(id, chinese, pinyin, rawPinyin, translation, term, pageNumber));
+            }
+
+            return vocabulary;
+        }
+
+        private Set<VocabularySet> loadSets(ResultSet result, Map<Integer,Vocabulary> vocs) throws SQLException {
+            final Map<Integer,VocabularySet> sets = new HashMap<Integer,VocabularySet>();
+
+            int setId;
+            String setName;
+            boolean templateSet;
+            VocabularySet set;
+            Vocabulary currentVoc;
+            while (result.next()) {
+                if((set = sets.get(setId = result.getInt("VocabularySet." + SET_ID_COLUMN))) == null) {
+                    templateSet = result.getString(USER_COLUMN) == null;
+                    setName = result.getString(SET_NAME_COLUMN);
+                    if(setName == null) continue;
+
+                    sets.put(setId, set = new VocabularySet(setId, setName, templateSet));
+                }
+
+                currentVoc = vocs.get(result.getInt(VOC_ID_COLUMN));
+                if(currentVoc == null) continue;
+
+                set.registerVoc(currentVoc);
+            }
+
+            return new HashSet<VocabularySet>(sets.values());
+        }
+
+    }
+
+    public void performLogin(Consumer<User> consumer, String userName, String password) {
+      new Thread(new LoginTask(consumer, userName, password)).start();
+    }
+
+    private static final String LOGIN_QUERY = "SELECT * FROM user WHERE Username=?;";
+
+    private final class LoginTask implements Runnable {
+
+        private final Consumer<User> consumer;
+        private final String name;
+        private final String password;
+
+        protected LoginTask(Consumer<User> consumer, String name, String password) {
+            this.consumer = consumer;
+            this.name = name;
+            this.password = password;
+        }
+
+        public void run() {
+            final User user;
+            PreparedStatement statement = null;
+            ResultSet data = null;
+            try {
+                (statement = createStatement(LOGIN_QUERY)).setString(1, name);
+                if((data = statement.executeQuery()).next()) {
+                    if(password.equals(data.getString(PASSWORD_COLUMN))) {
+
+                        final EnumMap<StatisticKey,Integer> stats = new EnumMap<StatisticKey,Integer>(StatisticKey.class);
+                        for(StatisticKey key: StatisticKey.values())
+                            stats.put(key, data.getInt(key.databaseColumn));
+
+                        user = new User(name, stats);
+                    }
+                    else user = null;
+                }
+                else user = null;
+            }
+            catch (Exception ex) {
+                Main.handleError("Failed to check login data: " + ex, true);
+                return;
+            }
+            finally {
+                closeResources(statement, data);
+            }
+
+            consumer.accept(user);
+        }
+
+    }
+
+    private static final String REGISTRATION_COMMAND = "INSERT INTO user (Username, Password) VALUES (?, ?);";
+
+    public void registerUser(Consumer<User> consumer, String userName, String password) {
+        new RegistrationTask(consumer, userName, password).run();
+    }
+
+    private final class RegistrationTask implements Runnable {
+
+        private final Consumer<User> consumer;
+        private final String userName;
+        private final String password;
+
+        protected RegistrationTask(Consumer<User> consumer, String userName, String password) {
+            this.consumer = consumer;
+            this.userName = userName;
+            this.password = password;
+        }
+
+        public void run() { 
+            PreparedStatement statement = null;
+            ResultSet result = null;
+            try {
+                statement = createStatement(REGISTRATION_COMMAND);
+                statement.setString(1, userName);
+                statement.setString(2, password);
+                statement.executeUpdate();
+            }
+            catch (Exception ex) {
+                if(ex instanceof SQLIntegrityConstraintViolationException) {
+                    consumer.accept(null);
+                    return;
+                }
+
+                Main.handleError("Failed to register user: " + ex, true);
+            }
+            finally {
+                closeResources(statement, result);
+            }
+
+            consumer.accept(new User(userName, new EnumMap<StatisticKey,Integer>(StatisticKey.class)));
+        }
+
+    }
+
+    private static final String SET_CREATION_COMMAND = "INSERT INTO vocabularyset (Username, Name) VALUES (?, ?);";
+    private static final String[] SET_GENERATED_KEYS = { SET_ID_COLUMN }; 
+
+    public void createVocabularySet(Consumer<VocabularySet> consumer, User user, String name, Set<Vocabulary> initialContent) {
+        new Thread(new SetCreator(consumer, user, name, initialContent)).start();
+    }
+
+    private final class SetCreator implements Runnable {
+
+        private final Consumer<VocabularySet> consumer;
+        private final Set<Vocabulary> initialContent;
+        private final String name;
+        private final String userName;
+
+        protected SetCreator(Consumer<VocabularySet> consumer, User user, String name, Set<Vocabulary> initialContent) {
+            this.consumer = consumer;
+            this.userName = user.name;
+            this.name = name;
+            this.initialContent = initialContent;
+        }
+
+        public void run() {
+            final VocabularySet createdSet;
+            PreparedStatement statement = null;
+            ResultSet result = null;
+            try {
+                openConnection();
+                synchronized (this) {
+                    statement = connection.prepareStatement(SET_CREATION_COMMAND, SET_GENERATED_KEYS);
+                }
+                
+                statement.setString(1, userName);
+                statement.setString(2, name);
+                statement.executeUpdate();
+                result = statement.getGeneratedKeys();
+                if(!result.next()) throw new SQLException("Insert failed - no generated key was returned");
+
+                createdSet = new VocabularySet(result.getInt(1), name, false);
+            }
+            catch (Exception ex) {
+                Main.handleError("Failed to create vocabulary set: " + ex, false);
+                return;
+            }
+            finally {
+                closeResources(statement, result);
+            }
+
+            createdSet.registerVocs(initialContent);
+            consumer.accept(createdSet);
+            new SetModifier(createdSet, initialContent, null).run();
+        }
+
+    }
+
+    private static final String SET_ADD_VOC_COMMAND = "INSERT INTO setcontents VALUES (?, ?);";
+    private static final String SET_REMOVE_VOC_COMMAND = "DELETE FROM setcontents WHERE SetID=? AND VocID=?;";
+
+    public void modifyVocabularySet(VocabularySet set, Set<Vocabulary> add, Set<Vocabulary> remove) {
+        new Thread(new SetModifier(set, add, remove)).start();
+    }
+
+    private final class SetModifier implements Runnable {
+
+        private final int setId;
+        private final Set<Vocabulary> add;
+        private final Set<Vocabulary> remove;
+
+        protected SetModifier(VocabularySet set, Set<Vocabulary> add, Set<Vocabulary> remove) {
+            this.setId = set.id;
+            this.add = add;
+            this.remove = remove;
+        }
+
+        public void run() {
+            PreparedStatement command = null;
+            try {
+                if(add != null) {
+                    command = createStatement(SET_ADD_VOC_COMMAND);
+                    command.setInt(1, setId);
+                    for(Vocabulary voc: add) {
+                        command.setInt(2, voc.id);
+                        command.executeUpdate();
+                    }
+                    closeResources(command, null);
+                }
+
+                if(remove != null) {
+                    command = createStatement(SET_REMOVE_VOC_COMMAND);
+                    command.setInt(1, setId);
+                    for(Vocabulary voc: remove) {
+                        command.setInt(2, voc.id);
+                        command.executeUpdate();
+                    }
+                }
+            }
+            catch (Exception ex) {
+                Main.handleError("Failed to update vocabulary set: " + ex, false);
+            }
+            finally {
+                closeResources(command, null);
+            }
+        }
+
+    }
+
+    private static final String SET_DELETION_COMMAND = "DELETE FROM vocabularyset WHERE SetID=?;";
+
+    public void deleteVocabularySet(VocabularySet set) {
+        new Thread(new SetDeletionTask(set)).start();
+    }
+
+    private final class SetDeletionTask implements Runnable {
+
+        private final int setId;
+
+        protected SetDeletionTask(VocabularySet set) {
+            this.setId = set.id;
+        }
+
+        public void run() {
+            PreparedStatement statement = null;
+            try {
+                (statement = createStatement(SET_DELETION_COMMAND)).setInt(1, setId);
+                statement.executeUpdate();
+            }
+            catch (Exception ex) {
+                Main.handleError("Failed to delete vocabulary set: " + ex, false);
+            }
+            finally {
+                closeResources(statement, null);
+            }
+        }
+
+    }
+
+    public void updateStats(User user, Map<StatisticKey,Integer> newValues) {
+        new Thread(new StatisticUpdater(user, newValues)).start();
+    }
+
+    private final class StatisticUpdater implements Runnable {
+
+        private final String userName;
+        private final Map<StatisticKey,Integer> newValues;
+
+        protected StatisticUpdater(User user, Map<StatisticKey,Integer> newValues) {
+            this.userName = user.name;
+            this.newValues = newValues;
+        }
+
+        public void run() {
+            PreparedStatement current = null;
+            String currentCommand;
+            try {
+                for(Map.Entry<StatisticKey,Integer> e: newValues.entrySet()) {
+                    currentCommand = "UPDATE user SET " + e.getKey().databaseColumn + "=? WHERE Username=?;";
+                    current = createStatement(currentCommand);
+                    current.setInt(1, e.getValue());
+                    current.setString(2, userName);
+                    current.executeUpdate();
+                    closeResources(current, null);
+                    current = null;
+                }
+            }
+            catch (Exception ex) {
+                Main.handleError("Failed to store statistics: " + ex, false);
+            }
+            finally {
+                closeResources(current, null);
+            }
+        }
+
+    }
+
+    public void createRanking(Consumer<RankingTable[]> consumer, User user, StatisticKey... keys) {
+       new Thread(new RankingCreator(consumer, user, keys)).start();
+    }
+
+    private final class RankingCreator implements Runnable {
+
+        private final Consumer<RankingTable[]> consumer;
+        private final User user;
+        private final StatisticKey[] keys;
+
+        protected RankingCreator(Consumer<RankingTable[]> consumer, User user, StatisticKey[] keys) {
+            this.consumer = consumer;
+            this.user = user;
+            this.keys = keys;
+        }
+
+        public void run() {
+            final RankingTable[] tables = new RankingTable[keys.length];
+            PreparedStatement statement = null;
+            ResultSet result = null;
+            RankingTable.RankingBuilder current;
+            try {
+                for(int i = 0; i < keys.length; i++) {
+                    current = new RankingTable.RankingBuilder();
+                    statement = createStatement("SELECT * FROM (SELECT @rank:=@rank+1 AS Rank, Username, " + keys[i].databaseColumn + " AS Value FROM User, (SELECT @rank:=0) AS n ORDER BY Value DESC) AS r WHERE Rank<=? OR Username=?");
+                    statement.setInt(1, 10);
+                    statement.setString(2, user.name);
+                    result = statement.executeQuery();
+                    while (result.next())
+                        current.addUser(result.getInt("Rank"), result.getString(USER_COLUMN), result.getInt("Value"));
+                    tables[i] = current.build(keys[i]);
+                    closeResources(statement, result);
+                }
+            }
+            catch (Exception ex) {
+                consumer.accept(null);
+                Main.handleError("Failed to load statistics: " + ex, false);
+                return;
+            }
+            finally {
+                closeResources(statement, result);
+            }
+
+            consumer.accept(tables);
+        }
+
+    }
+
+    public void loadVocStatistics(Consumer<LinkedHashMap<Vocabulary,Double>> consumer, User user, boolean best, byte limit) {
+        new Thread(new VocStatisticLoader(consumer, user, best, limit)).start();
+    }
+
+    private static final String BEST_VOC_QUERY = "SELECT VocID, Passed_Checks / Total_Checks AS Rate FROM vocabularystatistics WHERE Username=? ORDER BY Rate DESC LIMIT ?;";
+    private static final String WORST_VOC_QUERY = "SELECT VocID, Passed_Checks / Total_Checks AS Rate FROM vocabularystatistics WHERE Username=? ORDER BY Rate ASC LIMIT ?;";
+
+    private final class VocStatisticLoader implements Runnable {
+
+        private final Consumer<LinkedHashMap<Vocabulary,Double>> consumer;
+        private final User user;
+        private final boolean best;
+        private final byte limit;
+
+        protected VocStatisticLoader(Consumer<LinkedHashMap<Vocabulary,Double>> consumer, User user, boolean best, byte limit) {
+            this.consumer = consumer;
+            this.user = user;
+            this.best = best;
+            this.limit = limit;
+        }
+
+        public void run() {
+            final LinkedHashMap<Vocabulary,Double> resultMap = new LinkedHashMap<Vocabulary,Double>();
+            PreparedStatement statement = null;
+            ResultSet result = null;
+            try {
+                statement = createStatement(best ? BEST_VOC_QUERY : WORST_VOC_QUERY);
+                statement.setString(1, user.name);
+                statement.setInt(2, limit);
+                result = statement.executeQuery();
+                while (result.next())
+                    resultMap.put(Main.VOCABULARY.getVocabulary(result.getInt(VOC_ID_COLUMN)), result.getDouble("Rate"));
+            }
+            catch (Exception ex) {
+                Main.handleError("Failed to load vocabulary stats: " + ex, false);
+                return;
+            }
+            finally {
+                closeResources(statement, result);
+            }
+
+            consumer.accept(resultMap);
+        }
+
+    }
+
+    public void updateVocStatistics(User user, Map<Vocabulary,CorrectnessRate> rates) {
+        new Thread(new VocStatisticUpdater(user, rates)).start();
+    }
+
+    private static final String VOC_UPDATE_COMMAND = "INSERT INTO vocabularystatistics (Username, VocID, Passed_Checks, Total_Checks) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE Passed_Checks=Passed_Checks+VALUES(Passed_Checks), Total_Checks=Total_Checks+VALUES(Total_Checks);";
+
+    private final class VocStatisticUpdater implements Runnable {
+
+        private final User user;
+        private final Map<Vocabulary,CorrectnessRate> rates;
+
+        protected VocStatisticUpdater(User user, Map<Vocabulary,CorrectnessRate> rates) {
+            this.user = user;
+            this.rates = rates;
+        }
+
+        public void run() {
+            PreparedStatement statement = null;
+            try {
+                statement = createStatement(VOC_UPDATE_COMMAND);
+                statement.setString(1, user.name);
+                CorrectnessRate rate;
+                for(Map.Entry<Vocabulary,CorrectnessRate> e: rates.entrySet()) {
+                    statement.setInt(2, e.getKey().id);
+                    statement.setInt(3, (rate = e.getValue()).getPassed());
+                    statement.setInt(4, rate.getTotal());
+                    statement.executeUpdate();
+                }
+            }
+            catch (Exception ex) {
+                Main.handleError("Failed to update vocabulary stats", false);
+            }
+            finally {
+                closeResources(statement, null);
+            }
+        }
+
     }
 
 }
