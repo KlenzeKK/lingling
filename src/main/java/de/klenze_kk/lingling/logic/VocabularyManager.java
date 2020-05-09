@@ -3,34 +3,33 @@ package de.klenze_kk.lingling.logic;
 import java.util.*;
 import java.util.function.Consumer;
 
-import de.klenze_kk.lingling.Gui.Hub;
+mport de.klenze_kk.lingling.Gui.Hub;
 import de.klenze_kk.lingling.Main;
 
-public final class VocabularyManager implements Consumer<List<Vocabulary>> {
+public final class VocabularyManager implements Consumer<Collection<Vocabulary>> {
 
-    protected final Set<VocabularySet> sets = new HashSet<VocabularySet>();
+    protected final Set<VocabularySet> sets = new LinkedHashSet<VocabularySet>();
     private final Set<Vocabulary> vocabulary = new LinkedHashSet<Vocabulary>();
-    private final Map<Short,Set<Vocabulary>> pagesCache = new LinkedHashMap<Short,Set<Vocabulary>>();
+    private final Map<Short,Set<Vocabulary>> pagesCache = new HashMap<Short,Set<Vocabulary>>();
     private final Map<Character,byte[]> gifs = new HashMap<Character,byte[]>();
 
-    public synchronized void accept(List<Vocabulary> vocs) {
-        vocabulary.clear();
-        pagesCache.clear();
+    public synchronized void accept(Collection<Vocabulary> vocs) {
+        if(vocs != null) {
+            vocabulary.addAll(vocs);
 
-        vocabulary.addAll(vocs);
-
-        Set<Vocabulary> currentPage;
-        for(Vocabulary voc: vocs) {
-            currentPage = pagesCache.get(voc.pageNumber);
-            if(currentPage == null) {
-                currentPage = new HashSet<Vocabulary>();
-                pagesCache.put(voc.pageNumber, currentPage);
+            Set<Vocabulary> currentPage;
+            for(Vocabulary voc: vocs) {
+                currentPage = pagesCache.get(voc.pageNumber);
+                if(currentPage == null) pagesCache.put(voc.pageNumber, currentPage = new HashSet<Vocabulary>());
+                currentPage.add(voc);
             }
-
-            currentPage.add(voc);
         }
-
+        
         Main.setJPanel(new Hub());
+    }
+
+    public synchronized boolean loadedVocabulary() {
+        return !vocabulary.isEmpty();
     }
 
     public synchronized Set<Vocabulary> getVocabulary() {
@@ -42,18 +41,24 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
 
         query = query.toLowerCase();
 
-        for(Short s: pageNumbers != null ? pageNumbers : pagesCache.keySet()) {
-            for(Vocabulary voc: pagesCache.get(s)) {
-                if(terms != null && !terms.contains(voc.term)) continue;
-                if(!voc.chinese.contains(query) &&
-                   !voc.rawPinyin.toLowerCase().contains(query) &&
-                   !voc.translation.toLowerCase().contains(query)) continue;
-
-                queryResult.add(voc);
-            }
+        if(pageNumbers != null) {
+            for(Short s: pageNumbers)
+                performQueryIn(pagesCache.get(s), queryResult, query, pageNumbers, terms);
         }
+        else performQueryIn(vocabulary, queryResult, query, pageNumbers, terms);
 
         return queryResult;
+    }
+
+    private void performQueryIn(Set<Vocabulary> baseSet, Set<Vocabulary> resultSet, String query, Set<Short> pageNumbers, Set<String> terms) {
+        for(Vocabulary voc: baseSet) {
+            if(terms != null && !terms.contains(voc.term)) continue;
+            if(!voc.chinese.contains(query) &&
+               !voc.rawPinyin.toLowerCase().contains(query) &&
+               !voc.translation.toLowerCase().contains(query)) continue;
+
+            resultSet.add(voc);
+        }
     }
 
     public synchronized Vocabulary getVocabulary(int id) {
@@ -71,9 +76,9 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
         }
     }
 
-    public void registerSet(VocabularySet set) {
+    public void registerSets(Set<VocabularySet> sets) {
         synchronized (sets) {
-            sets.add(set);
+            sets.addAll(sets);
         }
     }
 
@@ -88,11 +93,7 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
         return true;
     }
 
-    public void logOut() {
-        synchronized (this) {
-            vocabulary.clear();
-            pagesCache.clear();
-        }   
+    public void logOut() {   
         synchronized (sets) {
             sets.clear();
         }
@@ -106,11 +107,7 @@ public final class VocabularyManager implements Consumer<List<Vocabulary>> {
     
     public byte[] getGif(char c) {
         synchronized (gifs) {
-            byte[] gif = gifs.get(c);
-            if(gif == null)
-                gifs.put(c, gif = new byte[0]);
-                
-            return gif;
+            return gifs.get(c);
         }
     }
 
