@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 import de.klenze_kk.lingling.games.CorrectnessRate;
 import de.klenze_kk.lingling.games.RankingTable;
 import de.klenze_kk.lingling.logic.*;
+import de.klenze_kk.lingling.logic.Vocabulary.VocabularyMeta;
 
 /*
 <dependency>
@@ -21,13 +22,15 @@ public final class DatabaseManager {
     private static final String DRIVER_CLASS = "com.mysql.cj.jdbc.Driver";
     private static final String URL_PREFIX = "jdbc:mysql://";
 
-    private final Properties props = new Properties();
     private final String url;
+    private final Properties props = new Properties();
+    private final VocabularyManager vocabularyManager;
 
     protected Connection connection;
 
-    public DatabaseManager(String host, short port, String database, String userName, String password) {
+    public DatabaseManager(VocabularyManager vm, String host, short port, String database, String userName, String password) {
         this.url = new StringBuilder(URL_PREFIX).append(host).append(':').append(port).append('/').append(database).toString();
+        this.vocabularyManager = vm;
 
         props.setProperty("user", userName);
         props.setProperty("password", password);
@@ -87,10 +90,8 @@ public final class DatabaseManager {
 
     private static final String SET_ID_COLUMN = "SetID";
     private static final String SET_NAME_COLUMN = "Name";    
-    private static final String SET_QUERY = "SELECT * FROM VocabularySet, setcontents WHERE VocabularySet.SetID = setcontents.SetID AND (Username IS NULL OR Username=?);";
-
-    private static final String GIF_QUERY = "SELECT * FROM gifs";
-    private static final String CHARACTER_COLUMN = "Character";
+    private static final String SET_QUERY = "SELECT vocabularyset.SetID, Username, Name, VocID FROM vocabularyset LEFT JOIN setcontents ON vocabularyset.SetID = setcontents.SetID WHERE Username IS NULL OR Username=? ORDER BY Username, Name;";
+    
     private static final String GIF_COLUMN = "Gif";
 
     private final class VocabularyLoader implements Runnable {
@@ -119,15 +120,10 @@ public final class DatabaseManager {
                 setConsumer.accept(this.loadSets(result = statement.executeQuery(), vocabulary));
                 closeResources(statement, result);
 
-                result = (statement = createStatement(GIF_QUERY)).executeQuery();
-                while (result.next())
-                    Main.VOCABULARY.registerGif(result.getString(CHARACTER_COLUMN).charAt(0), result.getBytes(GIF_COLUMN));
-
                 vocConsumer.accept(new ArrayList<Vocabulary>(vocabulary.values()));
             }
             catch (Exception ex) {
                 Main.handleError("Failed to load vocabulary: " + ex, true);
-                ex.printStackTrace();
                 return;
             }
             finally { 
@@ -139,64 +135,46 @@ public final class DatabaseManager {
             final Map<Integer,Vocabulary> vocabulary = new LinkedHashMap<Integer,Vocabulary>();
 
             int id;
-            short pageNumber;
-            String chinese, translation, pinyin, rawPinyin, term;
+            Vocabulary v;
             while (result.next()) {
-                id = result.getInt(VOC_ID_COLUMN);
-
-                chinese = result.getString(CHINESE_COLUMN);
-                if(chinese == null) continue;
-
-                translation = result.getString(TRANSLATION_COLUMN);
-                if(translation == null) continue;
-
-                pinyin = result.getString(PINYIN_COLUMN);
-                if(pinyin == null) pinyin = "";
-
-                rawPinyin = result.getString(RAW_PINYIN_COLUMN);
-                if(rawPinyin == null) rawPinyin = pinyin;
-
-                term = result.getString(TERM_COLUMN);
-                if(term == null) term = "";
-
-                pageNumber = result.getShort(PAGE_NUMBER_COLUMN);
-
-                vocabulary.put(id, new Vocabulary(id, chinese, pinyin, rawPinyin, translation, term, pageNumber));
+                v = new Vocabulary (
+                    id = result.getInt(VOC_ID_COLUMN),
+                    result.getString(CHINESE_COLUMN),
+                    result.getString(PINYIN_COLUMN),
+                    result.getString(RAW_PINYIN_COLUMN),
+                    result.getString(TRANSLATION_COLUMN),
+                    result.getString(TERM_COLUMN),
+                    result.getShort(PAGE_NUMBER_COLUMN)
+                );
+                vocabulary.put(id, v);
             }
 
             return vocabulary;
         }
 
         private Set<VocabularySet> loadSets(ResultSet result, Map<Integer,Vocabulary> vocs) throws SQLException {
-            final Map<Integer,VocabularySet> sets = new HashMap<Integer,VocabularySet>();
+            final Set<VocabularySet> sets = new LinkedHashSet<VocabularySet>();
 
-            int setId;
-            String setName;
-            boolean templateSet;
-            VocabularySet set;
-            Vocabulary currentVoc;
+            int currentId;
+            int currentVoc;
+            VocabularySet currentSet = null;
             while (result.next()) {
-                if((set = sets.get(setId = result.getInt("VocabularySet." + SET_ID_COLUMN))) == null) {
-                    templateSet = result.getString(USER_COLUMN) == null;
-                    setName = result.getString(SET_NAME_COLUMN);
-                    if(setName == null) continue;
+                currentId = result.getInt(SET_ID_COLUMN);
+                if(currentSet == null || currentSet.id != currentId)
+                    sets.add(currentSet = new VocabularySet(currentId, result.getString(SET_NAME_COLUMN), result.getString(USER_COLUMN) == null));
 
-                    sets.put(setId, set = new VocabularySet(setId, setName, templateSet));
-                }
-
-                currentVoc = vocs.get(result.getInt(VOC_ID_COLUMN));
-                if(currentVoc == null) continue;
-
-                set.registerVoc(currentVoc);
+                currentVoc = result.getInt(VOC_ID_COLUMN);
+                if(result.wasNull()) continue;
+                currentSet.registerVoc(vocs.get(currentVoc));
             }
 
-            return new HashSet<VocabularySet>(sets.values());
+            return sets; 
         }
 
     }
 
     public void performLogin(Consumer<User> consumer, String userName, String password) {
-      new Thread(new LoginTask(consumer, userName, password)).start();
+        new Thread(new LoginTask(consumer, userName, password)).start();
     }
 
     private static final String LOGIN_QUERY = "SELECT * FROM user WHERE Username=?;";
@@ -315,8 +293,8 @@ public final class DatabaseManager {
             PreparedStatement statement = null;
             ResultSet result = null;
             try {
-                openConnection();
                 synchronized (this) {
+                    openConnection();
                     statement = connection.prepareStatement(SET_CREATION_COMMAND, SET_GENERATED_KEYS);
                 }
                 
@@ -462,6 +440,8 @@ public final class DatabaseManager {
 
     }
 
+    private static final byte RANKING_SIZE = 10;
+
     public void createRanking(Consumer<RankingTable[]> consumer, User user, StatisticKey... keys) {
        new Thread(new RankingCreator(consumer, user, keys)).start();
     }
@@ -487,7 +467,7 @@ public final class DatabaseManager {
                 for(int i = 0; i < keys.length; i++) {
                     current = new RankingTable.RankingBuilder();
                     statement = createStatement("SELECT * FROM (SELECT @rank:=@rank+1 AS Rank, Username, " + keys[i].databaseColumn + " AS Value FROM User, (SELECT @rank:=0) AS n ORDER BY Value DESC) AS r WHERE Rank<=? OR Username=?");
-                    statement.setInt(1, 10);
+                    statement.setInt(1, RANKING_SIZE);
                     statement.setString(2, user.name);
                     result = statement.executeQuery();
                     while (result.next())
@@ -541,7 +521,7 @@ public final class DatabaseManager {
                 statement.setInt(2, limit);
                 result = statement.executeQuery();
                 while (result.next())
-                    resultMap.put(Main.VOCABULARY.getVocabulary(result.getInt(VOC_ID_COLUMN)), result.getDouble("Rate"));
+                    resultMap.put(vocabularyManager.getVocabulary(result.getInt(VOC_ID_COLUMN)), result.getDouble("Rate"));
             }
             catch (Exception ex) {
                 Main.handleError("Failed to load vocabulary stats: " + ex, false);
@@ -591,6 +571,59 @@ public final class DatabaseManager {
             finally {
                 closeResources(statement, null);
             }
+        }
+
+    }
+
+    public void loadVocabularyMeta(Consumer<VocabularyMeta> consumer, User user, Vocabulary voc) {
+        new Thread(new VocabularyMetaLoader(consumer, user, voc)).start();
+    }
+
+    private static final String CORRECTNESS_RATE_QUERY = "SELECT Passed_Checks / Total_Checks AS Rate FROM vocabularystatistics WHERE Username=? AND VocID=?;";
+    private static final String GIF_QUERY = "SELECT Gif FROM gifs WHERE Character=?;";
+
+    private final class VocabularyMetaLoader implements Runnable {
+        
+        private final Consumer<VocabularyMeta> consumer;
+        private final User user;
+        private final Vocabulary voc;
+
+        protected VocabularyMetaLoader(Consumer<VocabularyMeta> consumer, User user, Vocabulary voc) {
+            this.consumer = consumer;
+            this.user = user;
+            this.voc = voc;
+        }
+
+        public void run() {
+            final byte[][] gifs = new byte[voc.chinese.length()][];
+            final double rate;
+            PreparedStatement statement = null;
+            ResultSet result = null;
+            try {
+                (statement = createStatement(CORRECTNESS_RATE_QUERY)).setString(1, user.name);
+                statement.setInt(2, voc.id);
+                rate = (result = statement.executeQuery()).next() ? result.getDouble("Rate") : Double.NaN;
+                closeResources(statement, result);
+
+                statement = createStatement(GIF_QUERY);
+                final char[] chineseChars = voc.chinese.toCharArray();
+                for(int i = 0; i < chineseChars.length; i++) {
+                    statement.setString(1, Character.toString(chineseChars[i]));
+                    if((result = statement.executeQuery()).next())
+                        vocabularyManager.registerGif(chineseChars[i], gifs[i] = result.getBytes(GIF_COLUMN));
+                    else gifs[i] = new byte[0];
+                    closeResources(null, result);
+                }
+            }
+            catch (Exception ex) {
+                Main.handleError("Failed to load vocabulary metadata: " + ex, false);
+                return;
+            }
+            finally {
+                closeResources(statement, result);
+            }
+
+            consumer.accept(voc.new VocabularyMeta(gifs, rate));
         }
 
     }
