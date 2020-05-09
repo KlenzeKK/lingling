@@ -4,6 +4,7 @@ import java.sql.*;
 import java.util.*;
 import java.util.function.Consumer;
 
+import de.klenze_kk.lingling.games.CorrectnessRate;
 import de.klenze_kk.lingling.games.RankingTable;
 import de.klenze_kk.lingling.logic.*;
 
@@ -20,44 +21,51 @@ public final class DatabaseManager {
     private static final String DRIVER_CLASS = "com.mysql.cj.jdbc.Driver";
     private static final String URL_PREFIX = "jdbc:mysql://";
 
-    private final String url, userName, password;
+    private final Properties props = new Properties();
+    private final String url;
 
     protected Connection connection;
 
     public DatabaseManager(String host, short port, String database, String userName, String password) {
-        this.userName = userName;
-        this.password = password;
         this.url = new StringBuilder(URL_PREFIX).append(host).append(':').append(port).append('/').append(database).toString();
+
+        props.setProperty("user", userName);
+        props.setProperty("password", password);
+        props.setProperty("dataSource.cachePrepStmts", "true");
+        props.setProperty("dataSource.prepStmtCacheSize", "15");
+        props.setProperty("dataSource.prepStmtCacheSqlLimit", "2048");
+        props.setProperty("dataSource.useServerPrepStmts", "true");
     }
 
-    protected synchronized void openConnection() throws SQLException {
+    protected synchronized void openConnection() throws SQLException, ClassNotFoundException {
         if(connection != null && !connection.isClosed()) return;
 
-        try {
-            Class.forName(DRIVER_CLASS);
-        }
-        catch (ClassNotFoundException ex) {
-            throw new Error(ex);
-        }
-
-        this.connection = DriverManager.getConnection(url, userName, password);
+        Class.forName(DRIVER_CLASS);
+        this.connection = DriverManager.getConnection(url, props);
     }
 
-    protected synchronized PreparedStatement createStatement(String sqlTemplate) throws SQLException {
-        openConnection();
+    protected synchronized PreparedStatement createStatement(String sqlTemplate) throws SQLException, ClassNotFoundException {
+        this.openConnection();
         return connection.prepareStatement(sqlTemplate);
     }
 
-    public synchronized void closeConnection() {
-        if(connection == null) return;
-
-        try {
-            if(!connection.isClosed())
-                connection.close();
-            connection = null;
+    protected void closeResources(PreparedStatement statement, ResultSet result) {
+        if(result != null) {
+            try {
+                if(!result.isClosed())
+                    result.close();
+            }
+            catch (Exception ex) {}
         }
-        catch (Exception ex) {
-            Main.handleError("Failed to close SQL connection: " + ex, false);
+        if(statement != null) {
+            try {
+                if(!statement.isClosed()) {
+                    synchronized (this) {
+                        statement.close();
+                    }
+                }
+            }
+            catch (Exception ex) {}
         }
     }
 
@@ -237,7 +245,6 @@ public final class DatabaseManager {
 
     }
 
-    private static final String USERNAME_COUNT_QUERY = "SELECT COUNT(*) FROM user WHERE Username=?;";
     private static final String REGISTRATION_COMMAND = "INSERT INTO user (Username, Password) VALUES (?, ?);";
 
     public void registerUser(Consumer<User> consumer, String userName, String password) {
@@ -257,30 +264,8 @@ public final class DatabaseManager {
         }
 
         public void run() { 
-            final int userCount;
             PreparedStatement statement = null;
             ResultSet result = null;
-            try {  
-                (statement = createStatement(USERNAME_COUNT_QUERY)).setString(1, userName);
-                (result = statement.executeQuery()).next();
-                userCount = result.getInt(1);
-            }
-            catch (Exception ex) {
-                Main.handleError("Failed to check availability of username: " + ex, true);
-                return;
-            }
-            finally {
-                closeResources(statement, result);
-            }
-
-            if(userCount > 0) {
-                consumer.accept(null);
-                return;
-            }
-
-            statement = null;
-            result = null;
-
             try {
                 statement = createStatement(REGISTRATION_COMMAND);
                 statement.setString(1, userName);
@@ -288,17 +273,24 @@ public final class DatabaseManager {
                 statement.executeUpdate();
             }
             catch (Exception ex) {
+                if(ex instanceof SQLIntegrityConstraintViolationException) {
+                    consumer.accept(null);
+                    return;
+                }
+
                 Main.handleError("Failed to register user: " + ex, true);
             }
             finally {
-                closeResources(statement, null);
+                closeResources(statement, result);
             }
+
+            consumer.accept(new User(userName, new EnumMap<StatisticKey,Integer>(StatisticKey.class)));
         }
 
     }
 
     private static final String SET_CREATION_COMMAND = "INSERT INTO vocabularyset (Username, Name) VALUES (?, ?);";
-    private static final String[] SET_GENERATED_KEY_COLUMNS = { SET_ID_COLUMN }; 
+    private static final String[] SET_GENERATED_KEYS = { SET_ID_COLUMN }; 
 
     public void createVocabularySet(Consumer<VocabularySet> consumer, User user, String name, Set<Vocabulary> initialContent) {
         new Thread(new SetCreator(consumer, user, name, initialContent)).start();
@@ -325,7 +317,7 @@ public final class DatabaseManager {
             try {
                 openConnection();
                 synchronized (this) {
-                    statement = connection.prepareStatement(SET_CREATION_COMMAND, SET_GENERATED_KEY_COLUMNS);
+                    statement = connection.prepareStatement(SET_CREATION_COMMAND, SET_GENERATED_KEYS);
                 }
                 
                 statement.setString(1, userName);
@@ -518,21 +510,89 @@ public final class DatabaseManager {
 
     }
 
-    private static void closeResources(Statement statement, ResultSet result) {
-        if(result != null) {
-            try {
-                if(!result.isClosed())
-                    result.close();
-            }
-            catch (Exception ex) {}
+    public void loadVocStatistics(Consumer<LinkedHashMap<Vocabulary,Double>> consumer, User user, boolean best, byte limit) {
+        new Thread(new VocStatisticLoader(consumer, user, best, limit)).start();
+    }
+
+    private static final String BEST_VOC_QUERY = "SELECT VocID, Passed_Checks / Total_Checks AS Rate FROM vocabularystatistics WHERE Username=? ORDER BY Rate DESC LIMIT ?;";
+    private static final String WORST_VOC_QUERY = "SELECT VocID, Passed_Checks / Total_Checks AS Rate FROM vocabularystatistics WHERE Username=? ORDER BY Rate ASC LIMIT ?;";
+
+    private final class VocStatisticLoader implements Runnable {
+
+        private final Consumer<LinkedHashMap<Vocabulary,Double>> consumer;
+        private final User user;
+        private final boolean best;
+        private final byte limit;
+
+        protected VocStatisticLoader(Consumer<LinkedHashMap<Vocabulary,Double>> consumer, User user, boolean best, byte limit) {
+            this.consumer = consumer;
+            this.user = user;
+            this.best = best;
+            this.limit = limit;
         }
-        if(statement != null) {
+
+        public void run() {
+            final LinkedHashMap<Vocabulary,Double> resultMap = new LinkedHashMap<Vocabulary,Double>();
+            PreparedStatement statement = null;
+            ResultSet result = null;
             try {
-                if(!statement.isClosed())
-                    statement.close();
+                statement = createStatement(best ? BEST_VOC_QUERY : WORST_VOC_QUERY);
+                statement.setString(1, user.name);
+                statement.setInt(2, limit);
+                result = statement.executeQuery();
+                while (result.next())
+                    resultMap.put(Main.VOCABULARY.getVocabulary(result.getInt(VOC_ID_COLUMN)), result.getDouble("Rate"));
             }
-            catch (Exception ex) {}
+            catch (Exception ex) {
+                Main.handleError("Failed to load vocabulary stats: " + ex, false);
+                return;
+            }
+            finally {
+                closeResources(statement, result);
+            }
+
+            consumer.accept(resultMap);
         }
+
+    }
+
+    public void updateVocStatistics(User user, Map<Vocabulary,CorrectnessRate> rates) {
+        new Thread(new VocStatisticUpdater(user, rates)).start();
+    }
+
+    private static final String VOC_UPDATE_COMMAND = "INSERT INTO vocabularystatistics (Username, VocID, Passed_Checks, Total_Checks) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE Passed_Checks=Passed_Checks+VALUES(Passed_Checks), Total_Checks=Total_Checks+VALUES(Total_Checks);";
+
+    private final class VocStatisticUpdater implements Runnable {
+
+        private final User user;
+        private final Map<Vocabulary,CorrectnessRate> rates;
+
+        protected VocStatisticUpdater(User user, Map<Vocabulary,CorrectnessRate> rates) {
+            this.user = user;
+            this.rates = rates;
+        }
+
+        public void run() {
+            PreparedStatement statement = null;
+            try {
+                statement = createStatement(VOC_UPDATE_COMMAND);
+                statement.setString(1, user.name);
+                CorrectnessRate rate;
+                for(Map.Entry<Vocabulary,CorrectnessRate> e: rates.entrySet()) {
+                    statement.setInt(2, e.getKey().id);
+                    statement.setInt(3, (rate = e.getValue()).getPassed());
+                    statement.setInt(4, rate.getTotal());
+                    statement.executeUpdate();
+                }
+            }
+            catch (Exception ex) {
+                Main.handleError("Failed to update vocabulary stats", false);
+            }
+            finally {
+                closeResources(statement, null);
+            }
+        }
+
     }
 
 }
