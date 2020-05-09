@@ -2,8 +2,8 @@ package de.klenze_kk.lingling.logic;
 
 import java.util.*;
 import java.util.function.Consumer;
-// import de.klenze_kk.lingling.Gui.Hub;
-// import de.klenze_kk.lingling.Main;
+import de.klenze_kk.lingling.Gui.Hub;
+import de.klenze_kk.lingling.Main;
 
 public final class VocabularyManager implements Consumer<Collection<Vocabulary>> {
 
@@ -24,8 +24,7 @@ public final class VocabularyManager implements Consumer<Collection<Vocabulary>>
             }
         }
         
-        throw new IllegalStateException("Zeilen 5, 32 im VocManager wieder auskommentieren!");
-        // Main.setJPanel(new Hub());
+        Main.setJPanel(new Hub());
     }
 
     public synchronized boolean loadedVocabulary() {
