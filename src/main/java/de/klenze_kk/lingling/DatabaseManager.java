@@ -72,8 +72,8 @@ public final class DatabaseManager {
         }
     }
 
-    public void loadVocabulary(User u, Consumer<List<Vocabulary>> vocConsumer, Consumer<Set<VocabularySet>> setConsumer) {
-       new Thread(new VocabularyLoader(u, vocConsumer, setConsumer)).start();
+    public void loadVocabulary(User user) {
+       new Thread(new VocabularyLoader(user)).start();
     }
 
     private static final String VOC_ID_COLUMN = "VocID";
@@ -96,31 +96,24 @@ public final class DatabaseManager {
 
     private final class VocabularyLoader implements Runnable {
 
-        private final String userName;
-        private final Consumer<List<Vocabulary>> vocConsumer;
-        private final Consumer<Set<VocabularySet>> setConsumer;
+        private final User user;
 
-        protected VocabularyLoader(User user, Consumer<List<Vocabulary>> vocConsumer, Consumer<Set<VocabularySet>> setConsumer) {
-            this.userName = user.name;
-            this.vocConsumer = vocConsumer;
-            this.setConsumer = setConsumer;
+        protected VocabularyLoader(User user) {
+            this.user = user;
         }
 
         public void run() {
+            final Map<Integer,Vocabulary> vocabulary;
+            final Set<VocabularySet> sets;
             PreparedStatement statement = null;
             ResultSet result = null;
             try {
                 result = (statement = createStatement(VOCABULARY_QUERY)).executeQuery();
-
-                final Map<Integer,Vocabulary> vocabulary = this.loadVocabulary(result);
+                vocabulary = this.loadVocabulary(result);
                 closeResources(statement, result);
 
-                statement = createStatement(SET_QUERY);
-                statement.setString(1, userName);
-                setConsumer.accept(this.loadSets(result = statement.executeQuery(), vocabulary));
-                closeResources(statement, result);
-
-                vocConsumer.accept(new ArrayList<Vocabulary>(vocabulary.values()));
+                (statement = createStatement(SET_QUERY)).setString(1, user.name);
+                sets = this.loadSets(result = statement.executeQuery(), vocabulary);
             }
             catch (Exception ex) {
                 Main.handleError("Failed to load vocabulary: " + ex, true);
@@ -129,6 +122,9 @@ public final class DatabaseManager {
             finally { 
                 closeResources(statement, result);
             }
+
+            vocabularyManager.registerSets(sets);
+            vocabularyManager.accept(vocabulary.values());
         }
 
         private Map<Integer,Vocabulary> loadVocabulary(ResultSet result) throws SQLException {
