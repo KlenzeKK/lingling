@@ -2,9 +2,8 @@ package de.klenze_kk.lingling.logic;
 
 import java.util.*;
 import java.util.function.Consumer;
-
-mport de.klenze_kk.lingling.Gui.Hub;
-import de.klenze_kk.lingling.Main;
+// import de.klenze_kk.lingling.Gui.Hub;
+// import de.klenze_kk.lingling.Main;
 
 public final class VocabularyManager implements Consumer<Collection<Vocabulary>> {
 
@@ -25,7 +24,8 @@ public final class VocabularyManager implements Consumer<Collection<Vocabulary>>
             }
         }
         
-        Main.setJPanel(new Hub());
+        throw new IllegalStateException("Zeilen 5, 32 im VocManager wieder auskommentieren!");
+        // Main.setJPanel(new Hub());
     }
 
     public synchronized boolean loadedVocabulary() {
@@ -115,45 +115,6 @@ public final class VocabularyManager implements Consumer<Collection<Vocabulary>>
         synchronized (gifs) {
             gifs.put(c, bytes);
         }
-    }
-
-    private static final char[][] TONES = 
-    {
-        { 'ā', 'á', 'ǎ', 'à' },
-        { 'ē', 'é', 'ě', 'è' },
-        { 'ī', 'í', 'ǐ', 'ì' },
-        { 'ō', 'ó', 'ǒ', 'ò' },
-        { 'ū', 'ú', 'ǔ', 'ù' },
-        { 'ǖ', 'ǘ', 'ǚ', 'ǜ' }
-    };
-    
-    public static boolean hasTones(Vocabulary voc) {
-        return !voc.pinyin.equals(voc.rawPinyin);
-    }
-
-    public static LinkedHashMap<Integer,char[]> findTones(Vocabulary voc) {
-        final LinkedHashMap<Integer,char[]> tones = new LinkedHashMap<Integer,char[]>();
-        final char[] pinyinChars = voc.pinyin.toCharArray();
-        boolean foundChar = false;
-        for(int i = 0; i < pinyinChars.length; i++) {
-            if(pinyinChars[i] >= 'a' && pinyinChars[i] <= 'z') continue;
-
-            for(char[] tonesForOneLetter: TONES) {
-                for(char toneChar: tonesForOneLetter) {
-                    if(pinyinChars[i] == toneChar) {
-                        tones.put(i, tonesForOneLetter);
-                        foundChar = true;
-                        break;
-                    }
-                }
-                if(foundChar) {
-                    foundChar = false;
-                    break;
-                }
-            }
-        }
-
-        return tones;
     }
 
 }
