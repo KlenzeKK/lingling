@@ -32,7 +32,7 @@ public final class User {
         synchronized (this) {
             stats.putAll(newValues);
         }
-        Main.getDatabaseManager().updateStats(Main.getUser(), newValues);
+        Main.getDatabaseManager().updateStats(this, newValues);
     }
 
     public synchronized int getValue(StatisticKey key) {
