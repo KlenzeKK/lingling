@@ -76,11 +76,17 @@ public final class VocabularyManager implements Consumer<Collection<Vocabulary>>
     }
 
     public void registerSets(Set<VocabularySet> sets) {
-        synchronized (sets) {
-            sets.addAll(sets);
+        synchronized (this.sets) {
+            this.sets.addAll(sets);
         }
     }
 
+    public void registerSet(VocabularySet vs) {
+        synchronized (sets) {
+            sets.add(vs);
+        }
+    }
+    
     public boolean setNameAvailable(String name) {
         synchronized (sets) {
             for(VocabularySet set: sets) {
