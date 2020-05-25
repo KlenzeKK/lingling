@@ -576,7 +576,7 @@ public final class DatabaseManager {
     }
 
     private static final String CORRECTNESS_RATE_QUERY = "SELECT Passed_Checks / Total_Checks AS Rate FROM vocabularystatistics WHERE Username=? AND VocID=?;";
-    private static final String GIF_QUERY = "SELECT Gif FROM gifs WHERE Character=?;";
+    private static final String GIF_QUERY = "SELECT Gif FROM gifs WHERE Chinese_Char=?;";
 
     private final class VocabularyMetaLoader implements Runnable {
         
@@ -604,7 +604,7 @@ public final class DatabaseManager {
                 statement = createStatement(GIF_QUERY);
                 final char[] chineseChars = voc.chinese.toCharArray();
                 for(int i = 0; i < chineseChars.length; i++) {
-                    statement.setString(1, Character.toString(chineseChars[i]));
+                    statement.setString(1, String.valueOf(chineseChars[i]));
                     if((result = statement.executeQuery()).next())
                         vocabularyManager.registerGif(chineseChars[i], gifs[i] = result.getBytes(GIF_COLUMN));
                     else gifs[i] = new byte[0];
